@@ -1,0 +1,1156 @@
+"use client";
+
+import { CALLS_BY_PERIOD } from "@/mock/callsByPeriod";
+import React, { useMemo, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
+import {
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+import {
+  Download,
+  Filter,
+  RefreshCcw,
+  Search,
+  Settings,
+  Bell,
+  Users,
+  PhoneCall,
+  MessageSquare,
+  Clock,
+  ListChecks,
+} from "lucide-react";
+
+type Period = "today" | "yesterday" | "7d" | "30d" | "custom";
+
+type Channel = "all" | "voice" | "chat" | "email" | "sms" | "push";
+
+type Queue = "all" | "general" | "vip" | "antifraud";
+
+type Theme = {
+  name: string;
+  count: number;
+  avgHandleSec: number;
+  fcrPct: number;
+};
+
+type CallRow = {
+  id: string;
+  startedAt: string;
+  channel: Exclude<Channel, "all">;
+  queue: Exclude<Queue, "all">;
+  operator: string;
+  topic: string;
+  durationSec: number;
+  status: "Завершён" | "Пропущен" | "Ожидание" | "В разговоре";
+};
+
+function formatSec(sec: number) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function kpiDelta(delta: number) {
+  const sign = delta > 0 ? "+" : "";
+  return `${sign}${delta}%`;
+}
+
+const COLORS = ["#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb", "#f3f4f6"]; // neutral palette
+
+export default function ContactCenterAnalyticsDashboard() {
+  const [period, setPeriod] = useState<Period>("today");
+  const [channel, setChannel] = useState<Channel>("all");
+  const [queue, setQueue] = useState<Queue>("all");
+  const [dept, setDept] = useState<string>("Все отделы");
+  const [query, setQuery] = useState<string>("");
+  const [tab, setTab] = useState<string>("overview");
+
+
+  const calls: CallRow[] = useMemo(() => {
+  const result: CallRow[] = [];
+
+  const hours = ["09", "10", "11", "12", "13", "14", "15", "16", "17"];
+  const operators = ["Иван Петров", "Анна Соколова", "Алексей Козлов", "Мария Орлова"];
+  const topics = ["Авторизация ЛК", "Сброс пароля", "Консультация", "Ошибки в приложении"];
+
+  const queues: CallRow["queue"][] = ["general", "vip", "antifraud"];
+  const channels: CallRow["channel"][] = ["voice", "chat", "email"];
+
+  let id = period === "yesterday" ? 9000 : 10000;
+
+  for (const h of hours) {
+    for (const queue of queues) {
+      const callsPerQueuePerHour = 3 + Math.floor(Math.random() * 4); // 3–6 на очередь в час
+
+// 👉 гарантируем одно SMS
+result.push({
+  id: `C-${id++}`,
+  startedAt: `${h}:05`,
+  channel: "sms",
+  queue,
+  operator: operators[id % operators.length],
+  topic: topics[id % topics.length],
+  durationSec: 160 + Math.floor(Math.random() * 180),
+  status: Math.random() < 0.12 ? "Пропущен" : "Завершён",
+});
+
+// 👉 остальные обращения как раньше
+for (let i = 1; i < callsPerQueuePerHour; i++) {
+  result.push({
+    id: `C-${id++}`,
+    startedAt: `${h}:${String(5 + i * 5).padStart(2, "0")}`,
+    channel: channels[(i + h.charCodeAt(0)) % channels.length],
+    queue,
+    operator: operators[(i + id) % operators.length],
+    topic: topics[(i + id) % topics.length],
+    durationSec: 180 + Math.floor(Math.random() * 240),
+    status: Math.random() < 0.12 ? "Пропущен" : "Завершён",
+  });
+
+      }
+    }
+  }
+
+  return result;
+}, [period]);
+
+  const filteredCalls = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return calls.filter((r) => {
+      if (channel !== "all" && r.channel !== channel) return false;
+      if (queue !== "all" && r.queue !== queue) return false;
+      if (!q) return true;
+      return (
+        r.id.toLowerCase().includes(q) ||
+        r.operator.toLowerCase().includes(q) ||
+        r.topic.toLowerCase().includes(q)
+      );
+    });
+  }, [calls, channel, queue, query]);
+
+const kpis = useMemo(() => {
+  const incoming = filteredCalls.length;
+  const missed = filteredCalls.filter((c) => c.status === "Пропущен").length;
+
+  const handled = filteredCalls.filter(
+    (c) => c.status === "Завершён" && c.durationSec > 0
+  );
+
+  const ahtSec = handled.length
+    ? Math.round(
+        handled.reduce((sum, c) => sum + c.durationSec, 0) / handled.length
+      )
+    : 0;
+
+  const operatorsOnCalls = new Set(
+    filteredCalls.map((c) => c.operator)
+  ).size;
+
+  const completed = filteredCalls.filter(
+    (c) => c.status === "Завершён"
+  ).length;
+
+  const fcrPct = incoming
+    ? Math.round((completed / incoming) * 100)
+    : 0;
+
+  return [
+    {
+      title: "Входящие",
+      value: incoming.toLocaleString("ru-RU"),
+      icon: PhoneCall,
+      note: "за период",
+      delta: 0,
+    },
+    {
+      title: "Пропущенные",
+      value: missed.toLocaleString("ru-RU"),
+      icon: Bell,
+      note: "требуют реакции",
+      delta: 0,
+    },
+    {
+      title: "Средняя длительность",
+      value: ahtSec ? formatSec(ahtSec) : "—",
+      icon: Clock,
+      note: "AHT",
+      delta: 0,
+    },
+    {
+      title: "Нагрузка операторов",
+      value: `${operatorsOnCalls} / 44`,
+      icon: Users,
+      note: "уникальных / всего",
+      delta: 0,
+    },
+    {
+      title: "FCR",
+      value: `${Math.min(100, Math.max(0, fcrPct))}%`,
+      icon: ListChecks,
+      note: "завершённые / все",
+      delta: 0,
+    },
+  ];
+}, [filteredCalls]);
+
+
+
+  const timeSeries = useMemo(() => {
+  const map = new Map<
+    string,
+    { t: string; incoming: number; missed: number; ahtSum: number; ahtCnt: number }
+  >();
+
+  for (const c of filteredCalls) {
+    const hour = c.startedAt.split(":")[0]; // "15"
+    const key = `${hour}:00`;
+
+    const cur =
+      map.get(key) ?? { t: key, incoming: 0, missed: 0, ahtSum: 0, ahtCnt: 0 };
+
+    cur.incoming += 1;
+
+    if (c.status === "Пропущен") {
+      cur.missed += 1;
+    }
+
+    if (c.status === "Завершён" && c.durationSec > 0) {
+      cur.ahtSum += c.durationSec;
+      cur.ahtCnt += 1;
+    }
+
+    map.set(key, cur);
+  }
+
+  return Array.from(map.values())
+    .sort((a, b) => a.t.localeCompare(b.t))
+    .map((x) => ({
+      t: x.t,
+      incoming: x.incoming,
+      missed: x.missed,
+      aht: x.ahtCnt ? Math.round(x.ahtSum / x.ahtCnt) : 0,
+    }));
+}, [filteredCalls]);
+
+  const operatorLoad = useMemo(() => {
+  const map = new Map<string, number>();
+
+  for (const c of filteredCalls) {
+    map.set(c.operator, (map.get(c.operator) ?? 0) + 1);
+  }
+
+  return Array.from(map.entries()).map(([name, value]) => ({
+    name,
+    value,
+  }));
+}, [filteredCalls]);
+
+
+  const channelSplit = useMemo(() => {
+  const map = new Map<string, number>();
+
+  for (const c of filteredCalls) {
+    const label =
+      c.channel === "voice"
+        ? "Звонки"
+        : c.channel === "chat"
+        ? "Чат"
+        : c.channel === "email"
+        ? "Email"
+        : c.channel === "sms"
+        ? "SMS"
+        : "Push";
+
+    map.set(label, (map.get(label) ?? 0) + 1);
+  }
+
+  return Array.from(map.entries()).map(([name, value]) => ({
+    name,
+    value,
+  }));
+}, [filteredCalls]);
+
+
+  const themes: Theme[] = useMemo(() => {
+  const map = new Map<
+    string,
+    { count: number; sumSec: number; handled: number; completed: number }
+  >();
+
+  for (const c of filteredCalls) {
+    const cur =
+      map.get(c.topic) ?? { count: 0, sumSec: 0, handled: 0, completed: 0 };
+
+    cur.count += 1;
+
+    if (c.durationSec > 0) {
+      cur.sumSec += c.durationSec;
+      cur.handled += 1;
+    }
+
+    if (c.status === "Завершён") {
+      cur.completed += 1;
+    }
+
+    map.set(c.topic, cur);
+  }
+
+  return Array.from(map.entries())
+    .map(([name, v]) => ({
+      name,
+      count: v.count,
+      avgHandleSec: v.handled ? Math.round(v.sumSec / v.handled) : 0,
+      fcrPct: v.count ? Math.round((v.completed / v.count) * 100) : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+}, [filteredCalls]);
+
+  // Доп. данные для вкладок (мок)
+  const operatorStats = useMemo(() => {
+  const map = new Map<
+    string,
+    { handled: number; missed: number; sumSec: number; completed: number }
+  >();
+
+  for (const c of filteredCalls) {
+    const cur =
+      map.get(c.operator) ?? {
+        handled: 0,
+        missed: 0,
+        sumSec: 0,
+        completed: 0,
+      };
+
+    if (c.status === "Пропущен") {
+      cur.missed += 1;
+    } else {
+      cur.handled += 1;
+    }
+
+    if (c.durationSec > 0) {
+      cur.sumSec += c.durationSec;
+    }
+
+    if (c.status === "Завершён") {
+      cur.completed += 1;
+    }
+
+    map.set(c.operator, cur);
+  }
+
+  return Array.from(map.entries()).map(([name, v]) => ({
+    name,
+    handled: v.handled,
+    missed: v.missed,
+    ahtMin: v.handled ? +(v.sumSec / v.handled / 60).toFixed(1) : 0,
+    fcr: v.handled + v.missed
+      ? Math.round((v.completed / (v.handled + v.missed)) * 100)
+      : 0,
+  }));
+}, [filteredCalls]);
+
+
+  const operatorAhtTrend = useMemo(() => {
+  const map = new Map<
+    string,
+    { t: string; ahtSum: number; cnt: number; asaSum: number }
+  >();
+
+  for (const c of filteredCalls) {
+    const hour = c.startedAt.split(":")[0];
+    const key = `${hour}:00`;
+
+    const cur =
+      map.get(key) ?? { t: key, ahtSum: 0, cnt: 0, asaSum: 0 };
+
+    if (c.durationSec > 0) {
+      cur.ahtSum += c.durationSec;
+      cur.cnt += 1;
+
+      // простая модель ASA: меньше при голосе, больше при тексте
+      const asa =
+        c.channel === "voice"
+          ? 15 + Math.random() * 10
+          : c.channel === "chat"
+          ? 30 + Math.random() * 15
+          : 60 + Math.random() * 40;
+
+      cur.asaSum += asa;
+    }
+
+    map.set(key, cur);
+  }
+
+  return Array.from(map.values())
+    .sort((a, b) => a.t.localeCompare(b.t))
+    .map((x) => ({
+      t: x.t,
+      aht: x.cnt ? Math.round(x.ahtSum / x.cnt) : 0,
+      asa: x.cnt ? Math.round(x.asaSum / x.cnt) : 0,
+    }));
+}, [filteredCalls]);
+
+
+  const queueStats = useMemo(() => {
+  const map = new Map<
+    string,
+    { total: number; missed: number; sumWait: number }
+  >();
+
+  for (const c of filteredCalls) {
+    const cur =
+      map.get(c.queue) ?? { total: 0, missed: 0, sumWait: 0 };
+
+    cur.total += 1;
+
+    if (c.status === "Пропущен") {
+      cur.missed += 1;
+    }
+
+    // простая модель ожидания (сек)
+    const wait =
+      c.channel === "voice"
+        ? 20 + Math.random() * 40
+        : c.channel === "chat"
+        ? 30 + Math.random() * 60
+        : 60 + Math.random() * 120;
+
+    cur.sumWait += wait;
+
+    map.set(c.queue, cur);
+  }
+
+  return Array.from(map.entries()).map(([queue, v]) => {
+    const avgWait = v.total ? Math.round(v.sumWait / v.total) : 0;
+
+    const abandonedPct = v.total
+      ? Math.round((v.missed / v.total) * 100)
+      : 0;
+
+    const slaPct = Math.max(60, 100 - abandonedPct - Math.round(avgWait / 5));
+
+    return {
+      name:
+        queue === "general"
+          ? "Общая"
+          : queue === "vip"
+          ? "VIP"
+          : "Антифрод",
+      waiting: Math.round(v.total * 0.08), // приблизительно в очереди
+      avgWaitSec: avgWait,
+      slaPct,
+      abandonedPct,
+    };
+  });
+}, [filteredCalls]);
+
+
+  const queueDepthTrend = useMemo(
+    () => [
+      { t: "09:00", general: 8, vip: 1, antifraud: 4 },
+      { t: "10:00", general: 12, vip: 2, antifraud: 6 },
+      { t: "11:00", general: 15, vip: 2, antifraud: 7 },
+      { t: "12:00", general: 18, vip: 3, antifraud: 9 },
+      { t: "13:00", general: 20, vip: 3, antifraud: 10 },
+      { t: "14:00", general: 16, vip: 2, antifraud: 8 },
+      { t: "15:00", general: 13, vip: 2, antifraud: 7 },
+    ],
+    []
+  );
+
+  const channelVolumes = useMemo(() => {
+  const map = new Map<
+    string,
+    { incoming: number; responseSum: number; cnt: number }
+  >();
+
+  for (const c of filteredCalls) {
+    const key = c.channel;
+
+    const cur =
+      map.get(key) ?? { incoming: 0, responseSum: 0, cnt: 0 };
+
+    cur.incoming += 1;
+
+    // простая модель времени ответа (сек)
+    const response =
+      c.channel === "voice"
+        ? 15 + Math.random() * 15
+        : c.channel === "chat"
+        ? 30 + Math.random() * 25
+        : c.channel === "sms"
+        ? 40 + Math.random() * 40
+        : 120 + Math.random() * 300;
+
+    cur.responseSum += response;
+    cur.cnt += 1;
+
+    map.set(key, cur);
+  }
+
+  const label = (ch: string) =>
+    ch === "voice"
+      ? "Звонки"
+      : ch === "chat"
+      ? "Чат"
+      : ch === "email"
+      ? "Email"
+      : ch === "sms"
+      ? "SMS"
+      : "Push";
+
+  return Array.from(map.entries()).map(([ch, v]) => ({
+    name: label(ch),
+    incoming: v.incoming,
+    outgoing: Math.round(v.incoming * 0.15), // условная доля исходящих
+    responseSec: v.cnt ? Math.round(v.responseSum / v.cnt) : 0,
+  }));
+}, [filteredCalls]);
+
+
+  const channelResponseTrend = useMemo(() => {
+  const map = new Map<
+    string,
+    { t: string; voice: number; chat: number; email: number; sms: number; push: number; cnt: Record<string, number> }
+  >();
+
+  for (const c of filteredCalls) {
+    const hour = c.startedAt.split(":")[0];
+    const key = `${hour}:00`;
+
+    const cur =
+      map.get(key) ?? {
+        t: key,
+        voice: 0,
+        chat: 0,
+        email: 0,
+        sms: 0,
+        push: 0,
+        cnt: { voice: 0, chat: 0, email: 0, sms: 0, push: 0 },
+      };
+
+    const response =
+      c.channel === "voice"
+        ? 15 + Math.random() * 15
+        : c.channel === "chat"
+        ? 30 + Math.random() * 25
+        : c.channel === "sms"
+        ? 40 + Math.random() * 40
+        : 120 + Math.random() * 300;
+
+    cur[c.channel] += response;
+    cur.cnt[c.channel] += 1;
+
+    map.set(key, cur);
+  }
+
+  return Array.from(map.values())
+    .sort((a, b) => a.t.localeCompare(b.t))
+    .map((x) => ({
+      t: x.t,
+      voice: x.cnt.voice ? Math.round(x.voice / x.cnt.voice) : 0,
+      chat: x.cnt.chat ? Math.round(x.chat / x.cnt.chat) : 0,
+      email: x.cnt.email ? Math.round(x.email / x.cnt.email) : 0,
+      sms: x.cnt.sms ? Math.round(x.sms / x.cnt.sms) : 0,
+      push: x.cnt.push ? Math.round(x.push / x.cnt.push) : 0,
+    }));
+}, [filteredCalls]);
+
+
+
+
+  return (
+    <div className="min-h-screen bg-muted/30">
+      {/* Верхняя часть: шапка + навигация */}
+      <header className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-muted">
+              <MessageSquare className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="text-lg font-semibold leading-tight">Расширенная аналитика контакт-центра</div>
+              <div className="text-xs text-muted-foreground">Отчётность по операторам, очередям, каналам и тематикам обращений</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="gap-2">
+              <RefreshCcw className="h-4 w-4" />
+              Обновить
+            </Button>
+            <Button variant="outline" className="gap-2">
+              <Download className="h-4 w-4" />
+              Экспорт
+            </Button>
+            <Button variant="ghost" size="icon" aria-label="Настройки">
+              <Settings className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Фильтры */}
+        <div className="mx-auto max-w-7xl px-4 pb-3">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-12">
+            <div className="md:col-span-2">
+              <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Период" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Сегодня</SelectItem>
+                  <SelectItem value="yesterday">Вчера</SelectItem>
+                  <SelectItem value="7d">Последние 7 дней</SelectItem>
+                  <SelectItem value="30d">Последние 30 дней</SelectItem>
+                  <SelectItem value="custom">Произвольный</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="md:col-span-3">
+              <Select value={dept} onValueChange={setDept}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Отдел" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Все отделы">Все отделы</SelectItem>
+                  <SelectItem value="Контакт-центр">Контакт-центр</SelectItem>
+                  <SelectItem value="Контроль качества">Контроль качества</SelectItem>
+                  <SelectItem value="Антифрод">Антифрод</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="md:col-span-3">
+              <Select value={channel} onValueChange={(v) => setChannel(v as Channel)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Канал" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все каналы</SelectItem>
+                  <SelectItem value="voice">Звонки</SelectItem>
+                  <SelectItem value="chat">Чат</SelectItem>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="sms">SMS</SelectItem>
+                  <SelectItem value="push">Push</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="md:col-span-2">
+              <Select value={queue} onValueChange={(v) => setQueue(v as Queue)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Очередь" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все очереди</SelectItem>
+                  <SelectItem value="general">Общая</SelectItem>
+                  <SelectItem value="vip">VIP</SelectItem>
+                  <SelectItem value="antifraud">Антифрод</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="md:col-span-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Поиск: оператор, тема, ID"
+                  className="pl-9"
+                />
+              </div>
+            </div>
+
+            <div className="md:col-span-12">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary" className="gap-1">
+                  <Filter className="h-3.5 w-3.5" />
+                  Фильтры
+                </Badge>
+                <Badge variant="outline">Период: {period === "today" ? "Сегодня" : period === "yesterday" ? "Вчера" : period === "7d" ? "7 дней" : period === "30d" ? "30 дней" : "Произвольный"}</Badge>
+                <Badge variant="outline">Отдел: {dept}</Badge>
+                <Badge variant="outline">Канал: {channel === "all" ? "Все" : channel}</Badge>
+                <Badge variant="outline">Очередь: {queue === "all" ? "Все" : queue}</Badge>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Центральная часть: KPI + графики + таблицы */}
+      <main className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-4 py-6 lg:grid-cols-12">
+        {/* KPI */}
+        <section className="lg:col-span-12">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {kpis.map((k) => {
+              const Icon = k.icon;
+              const isPositive = k.delta >= 0;
+              return (
+                <Card key={k.title} className="rounded-2xl">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">{k.title}</div>
+                        <div className="mt-1 text-2xl font-semibold tracking-tight">{k.value}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{k.note}</div>
+                      </div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-muted">
+                        <Icon className="h-5 w-5" />
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-2 text-xs">
+                      <Badge variant={isPositive ? "default" : "secondary"} className="rounded-xl">
+                        {kpiDelta(k.delta)}
+                      </Badge>
+                      <span className="text-muted-foreground">к предыдущему периоду</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Вкладки */}
+        <section className="lg:col-span-12">
+          <Tabs value={tab} onValueChange={setTab}>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <TabsList>
+                <TabsTrigger value="overview">Обзор</TabsTrigger>
+                <TabsTrigger value="operators">Операторы</TabsTrigger>
+                <TabsTrigger value="queues">Очереди</TabsTrigger>
+                <TabsTrigger value="channels">Каналы</TabsTrigger>
+                <TabsTrigger value="topics">Тематики</TabsTrigger>
+              </TabsList>
+
+              <div className="flex items-center gap-2">
+                <Button variant="outline" className="gap-2">
+                  <ListChecks className="h-4 w-4" />
+                  Настроить отчёты
+                </Button>
+                <Button className="gap-2">
+                  <Bell className="h-4 w-4" />
+                  Алерты
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
+              {/* Лево: графики */}
+              <div className="lg:col-span-8 space-y-4">
+                <TabsContent value="overview" className="m-0 space-y-4">
+                  <Card className="rounded-2xl">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Динамика обращений и пропусков</CardTitle>
+                    </CardHeader>
+                    <CardContent className="h-[320px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={timeSeries} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="t" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Line type="monotone" dataKey="incoming" name="Входящие" strokeWidth={2} dot={false} />
+                          <Line type="monotone" dataKey="missed" name="Пропущенные" strokeWidth={2} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Card className="rounded-2xl">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Нагрузка операторов</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-[260px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={operatorLoad} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip />
+                            <Bar dataKey="value" name="Сотрудники" radius={[10, 10, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <Badge variant="outline">На линии: 32</Badge>
+                          <Badge variant="outline">Ожидают: 4</Badge>
+                          <Badge variant="outline">Не доступен: 8</Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="rounded-2xl">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Распределение по каналам</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-[260px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Tooltip />
+                            <Legend />
+                            <Pie data={channelSplit} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
+                              {channelSplit.map((_, idx) => (
+                                <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
+                              ))}
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="operators" className="m-0 space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Card className="rounded-2xl">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Нагрузка по операторам</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-[280px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={operatorStats} margin={{ top: 10, right: 10, left: 0, bottom: 40 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" angle={-20} textAnchor="end" interval={0} height={55} />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="handled" name="Обработано" radius={[10, 10, 0, 0]} />
+                            <Bar dataKey="missed" name="Пропущено" radius={[10, 10, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="rounded-2xl">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Качество: AHT и FCR</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-[280px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={operatorStats} margin={{ top: 10, right: 10, left: 0, bottom: 40 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" angle={-20} textAnchor="end" interval={0} height={55} />
+                            <YAxis yAxisId="left" allowDecimals={false} />
+                            <YAxis yAxisId="right" orientation="right" allowDecimals={false} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar yAxisId="left" dataKey="ahtMin" name="AHT (мин)" radius={[10, 10, 0, 0]} />
+                            <Bar yAxisId="right" dataKey="fcr" name="FCR (%)" radius={[10, 10, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card className="rounded-2xl">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Динамика AHT и скорости ответа (ASA)</CardTitle>
+                    </CardHeader>
+                    <CardContent className="h-[320px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={operatorAhtTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="t" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Line type="monotone" dataKey="aht" name="AHT (сек)" strokeWidth={2} dot={false} />
+                          <Line type="monotone" dataKey="asa" name="ASA (сек)" strokeWidth={2} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="queues" className="m-0 space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Card className="rounded-2xl">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Очереди: SLA и ожидание</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-[280px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={queueStats} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis yAxisId="left" allowDecimals={false} />
+                            <YAxis yAxisId="right" orientation="right" allowDecimals={false} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar yAxisId="left" dataKey="slaPct" name="SLA (%)" radius={[10, 10, 0, 0]} />
+                            <Bar yAxisId="right" dataKey="avgWaitSec" name="Среднее ожидание (сек)" radius={[10, 10, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          {queueStats.map((q) => (
+                            <Badge key={q.name} variant="outline">
+                              {q.name}: в очереди {q.waiting}
+                            </Badge>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="rounded-2xl">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Потери: доля брошенных</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-[280px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={queueStats} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="abandonedPct" name="Брошенные (%)" radius={[10, 10, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card className="rounded-2xl">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Динамика длины очередей</CardTitle>
+                    </CardHeader>
+                    <CardContent className="h-[320px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={queueDepthTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="t" />
+                          <YAxis allowDecimals={false} />
+                          <Tooltip />
+                          <Legend />
+                          <Line type="monotone" dataKey="general" name="Общая" strokeWidth={2} dot={false} />
+                          <Line type="monotone" dataKey="vip" name="VIP" strokeWidth={2} dot={false} />
+                          <Line type="monotone" dataKey="antifraud" name="Антифрод" strokeWidth={2} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="channels" className="m-0 space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Card className="rounded-2xl">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Объём: входящие и исходящие</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-[280px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={channelVolumes} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="incoming" name="Входящие" radius={[10, 10, 0, 0]} />
+                            <Bar dataKey="outgoing" name="Исходящие" radius={[10, 10, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="rounded-2xl">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Скорость реакции по каналам</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-[280px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={channelVolumes} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="responseSec" name="Время ответа (сек)" radius={[10, 10, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card className="rounded-2xl">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Динамика времени ответа (сек)</CardTitle>
+                    </CardHeader>
+                    <CardContent className="h-[320px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={channelResponseTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="t" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Line type="monotone" dataKey="voice" name="Звонки" strokeWidth={2} dot={false} />
+                          <Line type="monotone" dataKey="chat" name="Чат" strokeWidth={2} dot={false} />
+                          <Line type="monotone" dataKey="email" name="Email" strokeWidth={2} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="topics" className="m-0 space-y-4">
+                  <Card className="rounded-2xl">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Тематики обращений: топ, длительность, FCR</CardTitle>
+                    </CardHeader>
+                    <CardContent className="h-[320px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={themes.map((t) => ({
+                            name: t.name,
+                            count: t.count,
+                            avg: Math.round(t.avgHandleSec / 60),
+                          }))}
+                          margin={{ top: 10, right: 10, left: 0, bottom: 60 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" angle={-20} textAnchor="end" interval={0} height={70} />
+                          <YAxis allowDecimals={false} />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="count" name="Обращения" radius={[10, 10, 0, 0]} />
+                          <Bar dataKey="avg" name="Средняя длительность (мин)" radius={[10, 10, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </div>
+
+              {/* Право: таблица + быстрые метрики */}
+              <aside className="lg:col-span-4 space-y-4">
+                <Card className="rounded-2xl">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Срез по тематикам</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {themes.map((t) => (
+                        <div key={t.name} className="rounded-2xl border bg-background p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium">{t.name}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                AHT: {formatSec(t.avgHandleSec)} · FCR: {t.fcrPct}%
+                              </div>
+                            </div>
+                            <Badge variant="secondary" className="rounded-xl">
+                              {t.count}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-2xl">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Последние коммуникации</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {filteredCalls.map((r) => (
+                        <div key={r.id} className="rounded-2xl border bg-background p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-medium">{r.id}</div>
+                            <Badge variant={r.status === "Пропущен" ? "secondary" : "outline"} className="rounded-xl">
+                              {r.status}
+                            </Badge>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {r.startedAt} · {r.channel.toUpperCase()} · {r.queue.toUpperCase()}
+                          </div>
+                          <Separator className="my-2" />
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm">{r.topic}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">Оператор: {r.operator}</div>
+                            </div>
+                            <div className="text-right text-xs text-muted-foreground">
+                              {r.durationSec ? `Длительность: ${formatSec(r.durationSec)}` : "—"}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {!filteredCalls.length && (
+                        <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
+                          Ничего не найдено по заданным фильтрам.
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </aside>
+            </div>
+          </Tabs>
+        </section>
+
+        {/* Нижняя часть: действия */}
+        <section className="lg:col-span-12">
+          <Card className="rounded-2xl">
+            <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-medium">Действия</div>
+                <div className="text-xs text-muted-foreground">
+                  Настройте отчёты под заказчика: очереди, каналы, тематики и длительность разговоров — без Excel.
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" className="gap-2">
+                  <Settings className="h-4 w-4" />
+                  Конструктор отчётов
+                </Button>
+                <Button variant="outline" className="gap-2">
+                  <Download className="h-4 w-4" />
+                  Экспорт (API)
+                </Button>
+                <Button className="gap-2">
+                  <Filter className="h-4 w-4" />
+                  Сохранить набор фильтров
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="mt-4 text-xs text-muted-foreground">
+            Примечание (учебный мокап): данные демонстрационные. В боевой системе источники — FreeSwitch (очереди), CRM/учётные системы (клиенты),
+            хранилище коммуникаций и аналитика по тематикам.
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
