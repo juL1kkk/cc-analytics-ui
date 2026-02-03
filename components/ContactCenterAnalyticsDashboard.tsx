@@ -81,6 +81,19 @@ function kpiDelta(delta: number) {
 
 const COLORS = ["#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb", "#f3f4f6"]; // neutral palette
 
+const SENTIMENT_COLORS: Record<string, string> = {
+  "Позитив": "#22c55e",     // зелёный
+  "Нейтрально": "#f59e0b", // оранжевый
+  "Негатив": "#ef4444",    // красный
+};
+
+const GOAL_COLORS: Record<string, string> = {
+  "Решено": "#22c55e",        // зелёный
+  "Эскалация": "#ef4444",    // красный
+  "Требует действий": "#f59e0b", // на будущее
+};
+
+
 export default function ContactCenterAnalyticsDashboard() {
   const [period, setPeriod] = useState<Period>("today");
   const [channel, setChannel] = useState<Channel>("all");
@@ -294,6 +307,33 @@ const kpis = useMemo(() => {
   }));
 }, [filteredCalls]);
 
+ const sentimentSplit = useMemo(() => {
+  const counts = { "Позитив": 0, "Нейтрально": 0, "Негатив": 0 };
+
+  for (const c of filteredCalls) {
+    if (c.status === "Пропущен") counts["Негатив"] += 1;
+    else if (c.channel === "voice") counts["Нейтрально"] += 1;
+    else counts["Позитив"] += 1;
+  }
+
+  return Object.entries(counts)
+    .map(([name, value]) => ({ name, value }))
+    .filter((x) => x.value > 0);
+}, [filteredCalls]);
+
+const goalSplit = useMemo(() => {
+  const counts = { "Решено": 0, "Эскалация": 0, "Требует действий": 0 };
+
+  for (const c of filteredCalls) {
+    if (c.status === "Завершён") counts["Решено"] += 1;
+    else if (c.status === "Пропущен") counts["Эскалация"] += 1;
+    else counts["Требует действий"] += 1;
+  }
+
+  return Object.entries(counts)
+    .map(([name, value]) => ({ name, value }))
+    .filter((x) => x.value > 0);
+}, [filteredCalls]);
 
   const themes: Theme[] = useMemo(() => {
   const map = new Map<
@@ -784,6 +824,8 @@ const kpis = useMemo(() => {
                     </CardContent>
                   </Card>
 
+                  
+
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <Card className="rounded-2xl">
                       <CardHeader className="pb-2">
@@ -826,6 +868,72 @@ const kpis = useMemo(() => {
                       </CardContent>
                     </Card>
                   </div>
+
+                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+
+  <Card className="rounded-2xl">
+    <CardHeader className="pb-2">
+      <CardTitle className="text-base">Эмоциональный фон</CardTitle>
+    </CardHeader>
+    <CardContent className="h-[260px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Tooltip />
+          <Legend />
+          <Pie
+            data={sentimentSplit}
+            dataKey="value"
+            nameKey="name"
+            innerRadius={55}
+            outerRadius={90}
+            paddingAngle={2}
+          >
+            {sentimentSplit.map((entry) => (
+  <Cell
+    key={entry.name}
+    fill={SENTIMENT_COLORS[entry.name] || "#9ca3af"}
+  />
+))}
+
+          </Pie>
+        </PieChart>
+      </ResponsiveContainer>
+    </CardContent>
+  </Card>
+
+  <Card className="rounded-2xl">
+    <CardHeader className="pb-2">
+      <CardTitle className="text-base">Достижение цели</CardTitle>
+    </CardHeader>
+    <CardContent className="h-[260px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Tooltip />
+          <Legend />
+          <Pie
+            data={goalSplit}
+            dataKey="value"
+            nameKey="name"
+            innerRadius={55}
+            outerRadius={90}
+            paddingAngle={2}
+          >
+            {goalSplit.map((entry) => {
+  const key = entry.name.trim();
+  return (
+    <Cell
+      key={key}
+      fill={GOAL_COLORS[key] || "#9ca3af"}
+    />
+  );
+})}
+          </Pie>
+        </PieChart>
+      </ResponsiveContainer>
+    </CardContent>
+  </Card>
+</div>
+ 
                 </TabsContent>
 
                 <TabsContent value="operators" className="m-0 space-y-4">
