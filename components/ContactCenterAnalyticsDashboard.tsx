@@ -50,6 +50,8 @@ type Channel = "all" | "voice" | "chat" | "email" | "sms" | "push";
 
 type Queue = "all" | "general" | "vip" | "antifraud";
 
+type Dept = "Все отделы" | "Контакт-центр" | "Контроль качества" | "Антифрод";
+
 type Theme = {
   name: string;
   count: number;
@@ -62,6 +64,7 @@ type CallRow = {
   startedAt: string;
   channel: Exclude<Channel, "all">;
   queue: Exclude<Queue, "all">;
+  dept: Exclude<Dept, "Все отделы">;
   operator: string;
   topic: string;
   durationSec: number;
@@ -114,6 +117,41 @@ export default function ContactCenterAnalyticsDashboard() {
   const channels: CallRow["channel"][] = ["voice", "chat", "email"];
 
   let id = period === "yesterday" ? 9000 : 10000;
+  const depts: Array<"Контакт-центр" | "Контроль качества" | "Антифрод"> = [
+  "Контакт-центр",
+  "Контроль качества",
+  "Антифрод",
+];
+
+const allChannels: Array<"voice" | "chat" | "email" | "sms" | "push"> = [
+  "voice",
+  "chat",
+  "email",
+  "sms",
+  "push",
+];
+
+// seed: по 1 записи на каждую комбинацию (dept×queue×channel)
+for (const dept of depts) {
+  for (const queue of queues) {
+    for (const ch of allChannels) {
+      // чтобы Антифрод выглядел логично: он “любит” antifraud
+      const q = dept === "Антифрод" ? "antifraud" : queue;
+
+      result.push({
+        id: `C-${id++}`,
+        startedAt: `09:00`,
+        channel: ch,
+        queue: q,
+        dept,
+        operator: operators[id % operators.length],
+        topic: topics[id % topics.length],
+        durationSec: 120 + Math.floor(Math.random() * 300),
+        status: Math.random() < 0.12 ? "Пропущен" : "Завершён",
+      });
+    }
+  }
+}
 
   for (const h of hours) {
     for (const queue of queues) {
@@ -125,6 +163,7 @@ result.push({
   startedAt: `${h}:05`,
   channel: "sms",
   queue,
+  dept: queue === "antifraud" ? "Антифрод" : "Контакт-центр",
   operator: operators[id % operators.length],
   topic: topics[id % topics.length],
   durationSec: 160 + Math.floor(Math.random() * 180),
@@ -133,18 +172,25 @@ result.push({
 
 // 👉 остальные обращения как раньше
 for (let i = 1; i < callsPerQueuePerHour; i++) {
+  const ch = channels[(i + h.charCodeAt(0)) % channels.length];
+
   result.push({
     id: `C-${id++}`,
     startedAt: `${h}:${String(5 + i * 5).padStart(2, "0")}`,
-    channel: channels[(i + h.charCodeAt(0)) % channels.length],
+    channel: ch,
     queue,
+    dept:
+  queue === "antifraud"
+    ? "Антифрод"
+    : Math.random() < 0.2
+    ? "Контроль качества"
+    : "Контакт-центр",
     operator: operators[(i + id) % operators.length],
     topic: topics[(i + id) % topics.length],
     durationSec: 180 + Math.floor(Math.random() * 240),
     status: Math.random() < 0.12 ? "Пропущен" : "Завершён",
   });
-
-      }
+}
     }
   }
 
@@ -156,6 +202,7 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     return calls.filter((r) => {
       if (channel !== "all" && r.channel !== channel) return false;
       if (queue !== "all" && r.queue !== queue) return false;
+      if (dept !== "Все отделы" && r.dept !== dept) return false;
       if (!q) return true;
       return (
         r.id.toLowerCase().includes(q) ||
@@ -163,7 +210,7 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
         r.topic.toLowerCase().includes(q)
       );
     });
-  }, [calls, channel, queue, query]);
+  }, [calls, channel, queue, dept, query]);
 
 const kpis = useMemo(() => {
   const incoming = filteredCalls.length;
@@ -233,15 +280,26 @@ const kpis = useMemo(() => {
 
 
   const timeSeries = useMemo(() => {
+  // фиксируем “витрину” часов, чтобы график не схлопывался в точку
+  const hours = ["09", "10", "11", "12", "13", "14", "15"];
+
   const map = new Map<
     string,
     { t: string; incoming: number; missed: number; ahtSum: number; ahtCnt: number }
   >();
 
+  // 1) заполняем нулями все часы
+  for (const h of hours) {
+    const key = `${h}:00`;
+    map.set(key, { t: key, incoming: 0, missed: 0, ahtSum: 0, ahtCnt: 0 });
+  }
+
+  // 2) накатываем реальные данные
   for (const c of filteredCalls) {
     const hour = c.startedAt.split(":")[0]; // "15"
     const key = `${hour}:00`;
 
+    // если вдруг час вне витрины (например 08:xx), можно либо пропустить, либо добавить
     const cur =
       map.get(key) ?? { t: key, incoming: 0, missed: 0, ahtSum: 0, ahtCnt: 0 };
 
@@ -259,29 +317,33 @@ const kpis = useMemo(() => {
     map.set(key, cur);
   }
 
-  return Array.from(map.values())
-    .sort((a, b) => a.t.localeCompare(b.t))
-    .map((x) => ({
+  // 3) возвращаем в правильном порядке (с нулями)
+  return hours.map((h) => {
+    const key = `${h}:00`;
+    const x = map.get(key)!;
+    return {
       t: x.t,
       incoming: x.incoming,
       missed: x.missed,
       aht: x.ahtCnt ? Math.round(x.ahtSum / x.ahtCnt) : 0,
-    }));
+    };
+  });
 }, [filteredCalls]);
 
-  const operatorLoad = useMemo(() => {
-  const map = new Map<string, number>();
+const operatorLoad = useMemo(() => {
+  const handled = filteredCalls.filter((c) => c.status === "Завершён").length;
+  const missed = filteredCalls.filter((c) => c.status === "Пропущен").length;
 
-  for (const c of filteredCalls) {
-    map.set(c.operator, (map.get(c.operator) ?? 0) + 1);
-  }
+  const onLine = Math.min(44, Math.max(0, Math.round(handled / 6))); // демо-оценка
+  const waiting = Math.min(44 - onLine, Math.max(0, Math.round(missed / 6)));
+  const unavailable = Math.max(0, 44 - onLine - waiting);
 
-  return Array.from(map.entries()).map(([name, value]) => ({
-    name,
-    value,
-  }));
+  return [
+    { name: "На линии", value: onLine },
+    { name: "Ожидают", value: waiting },
+    { name: "Не доступен", value: unavailable },
+  ];
 }, [filteredCalls]);
-
 
   const channelSplit = useMemo(() => {
   const map = new Map<string, number>();
@@ -956,6 +1018,8 @@ const goalSplit = useMemo(() => {
                         </ResponsiveContainer>
                       </CardContent>
                     </Card>
+
+
 
                     <Card className="rounded-2xl">
                       <CardHeader className="pb-2">
