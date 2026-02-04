@@ -104,6 +104,7 @@ export default function ContactCenterAnalyticsDashboard() {
   const [dept, setDept] = useState<string>("Все отделы");
   const [query, setQuery] = useState<string>("");
   const [tab, setTab] = useState<string>("overview");
+  const [topic, setTopic] = useState<string>("all");
 
 
   const calls: CallRow[] = useMemo(() => {
@@ -212,6 +213,29 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     });
   }, [calls, channel, queue, dept, query]);
 
+  const topicOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of filteredCalls) s.add(c.topic);
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [filteredCalls]);
+
+  const topicTimeSeries = useMemo(() => {
+    const hours = ["09", "10", "11", "12", "13", "14", "15"];
+
+    const map = new Map<string, number>();
+    for (const h of hours) map.set(`${h}:00`, 0);
+
+    for (const c of filteredCalls) {
+      if (topic !== "all" && c.topic !== topic) continue;
+      const key = `${c.startedAt.split(":")[0]}:00`;
+      if (!map.has(key)) continue;
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+
+    return hours.map((h) => ({ t: `${h}:00`, count: map.get(`${h}:00`) ?? 0 }));
+  }, [filteredCalls, topic]);
+
+
 const kpis = useMemo(() => {
   const incoming = filteredCalls.length;
   const missed = filteredCalls.filter((c) => c.status === "Пропущен").length;
@@ -281,6 +305,7 @@ const kpis = useMemo(() => {
 
   const timeSeries = useMemo(() => {
   // фиксируем “витрину” часов, чтобы график не схлопывался в точку
+  
   const hours = ["09", "10", "11", "12", "13", "14", "15"];
 
   const map = new Map<
@@ -330,6 +355,7 @@ const kpis = useMemo(() => {
   });
 }, [filteredCalls]);
 
+
 const operatorLoad = useMemo(() => {
   const handled = filteredCalls.filter((c) => c.status === "Завершён").length;
   const missed = filteredCalls.filter((c) => c.status === "Пропущен").length;
@@ -344,7 +370,37 @@ const operatorLoad = useMemo(() => {
     { name: "Не доступен", value: unavailable },
   ];
 }, [filteredCalls]);
+  const topicsTrend = useMemo(() => {
+  const hours = ["09", "10", "11", "12", "13", "14", "15"];
 
+  const cntByTopic = new Map<string, number>();
+  for (const c of filteredCalls) {
+    cntByTopic.set(c.topic, (cntByTopic.get(c.topic) ?? 0) + 1);
+  }
+
+  const topTopics = Array.from(cntByTopic.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([t]) => t);
+
+  const base = hours.map((h) => {
+    const row: Record<string, any> = { t: `${h}:00` };
+    for (const topic of topTopics) row[topic] = 0;
+    return row;
+  });
+
+  const idxByHour = new Map(hours.map((h, i) => [`${h}:00`, i]));
+
+  for (const c of filteredCalls) {
+    if (!topTopics.includes(c.topic)) continue;
+    const key = `${c.startedAt.split(":")[0]}:00`;
+    const idx = idxByHour.get(key);
+    if (idx === undefined) continue;
+    base[idx][c.topic] += 1;
+  }
+
+  return { data: base, topTopics };
+}, [filteredCalls]);
   const channelSplit = useMemo(() => {
   const map = new Map<string, number>();
 
@@ -429,6 +485,18 @@ const goalSplit = useMemo(() => {
       fcrPct: v.count ? Math.round((v.completed / v.count) * 100) : 0,
     }))
     .sort((a, b) => b.count - a.count);
+}, [filteredCalls]);
+  const topicSplit = useMemo(() => {
+  const m = new Map<string, number>();
+
+  for (const c of filteredCalls) {
+    m.set(c.topic, (m.get(c.topic) ?? 0) + 1);
+  }
+
+  return Array.from(m.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, value]) => ({ name, value }));
 }, [filteredCalls]);
 
   // Доп. данные для вкладок (мок)
@@ -1192,35 +1260,47 @@ const goalSplit = useMemo(() => {
                   </Card>
                 </TabsContent>
 
-                <TabsContent value="topics" className="m-0 space-y-4">
-                  <Card className="rounded-2xl">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Тематики обращений: топ, длительность, FCR</CardTitle>
-                    </CardHeader>
-                    <CardContent className="h-[320px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={themes.map((t) => ({
-                            name: t.name,
-                            count: t.count,
-                            avg: Math.round(t.avgHandleSec / 60),
-                          }))}
-                          margin={{ top: 10, right: 10, left: 0, bottom: 60 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" angle={-20} textAnchor="end" interval={0} height={70} />
-                          <YAxis allowDecimals={false} />
-                          <Tooltip />
-                          <Legend />
-                          <Bar dataKey="count" name="Обращения" radius={[10, 10, 0, 0]} />
-                          <Bar dataKey="avg" name="Средняя длительность (мин)" radius={[10, 10, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-              </div>
+              <TabsContent value="topics" className="m-0 space-y-4">
+  <Card className="rounded-2xl">
+    <CardHeader className="pb-2">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <CardTitle className="text-base">Количество обращений по выбранной теме</CardTitle>
 
+        <div className="w-full md:w-[320px]">
+          <Select value={topic} onValueChange={setTopic}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Тема" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все темы</SelectItem>
+              {topicOptions.map((t: string) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    </CardHeader>
+
+    <CardContent className="h-[320px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={topicTimeSeries} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="t" />
+          <YAxis allowDecimals={false} />
+          <Tooltip />
+          <Legend />
+          <Line type="monotone" dataKey="count" name="Обращения" strokeWidth={2} dot={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </CardContent>
+  </Card>
+</TabsContent>
+
+              </div>
+              
               {/* Право: таблица + быстрые метрики */}
               <aside className="lg:col-span-4 space-y-4">
                 <Card className="rounded-2xl">
@@ -1247,6 +1327,7 @@ const goalSplit = useMemo(() => {
                     </div>
                   </CardContent>
                 </Card>
+
 
                 <Card className="rounded-2xl">
                   <CardHeader className="pb-2">
