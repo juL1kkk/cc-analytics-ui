@@ -220,20 +220,28 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
   }, [filteredCalls]);
 
   const topicTimeSeries = useMemo(() => {
-    const hours = ["09", "10", "11", "12", "13", "14", "15"];
+  const hours = ["09", "10", "11", "12", "13", "14", "15"];
 
-    const map = new Map<string, number>();
-    for (const h of hours) map.set(`${h}:00`, 0);
+  const map = new Map<string, { incoming: number; missed: number }>();
+  for (const h of hours) map.set(`${h}:00`, { incoming: 0, missed: 0 });
 
-    for (const c of filteredCalls) {
-      if (topic !== "all" && c.topic !== topic) continue;
-      const key = `${c.startedAt.split(":")[0]}:00`;
-      if (!map.has(key)) continue;
-      map.set(key, (map.get(key) ?? 0) + 1);
-    }
+  for (const c of filteredCalls) {
+    if (topic !== "all" && c.topic !== topic) continue;
 
-    return hours.map((h) => ({ t: `${h}:00`, count: map.get(`${h}:00`) ?? 0 }));
-  }, [filteredCalls, topic]);
+    const key = `${c.startedAt.split(":")[0]}:00`;
+    const cur = map.get(key);
+    if (!cur) continue;
+
+    cur.incoming += 1;
+    if (c.status === "Пропущен") cur.missed += 1;
+  }
+
+  return hours.map((h) => {
+    const t = `${h}:00`;
+    const v = map.get(t) ?? { incoming: 0, missed: 0 };
+    return { t, incoming: v.incoming, missed: v.missed };
+  });
+}, [filteredCalls, topic]);
 
 
 const kpis = useMemo(() => {
@@ -1292,7 +1300,25 @@ const goalSplit = useMemo(() => {
           <YAxis allowDecimals={false} />
           <Tooltip />
           <Legend />
-          <Line type="monotone" dataKey="count" name="Обращения" strokeWidth={2} dot={false} />
+          <Legend />
+            <Line
+            type="monotone"
+            dataKey="incoming"
+            name="Обращения"
+            stroke="#2563eb"
+            strokeWidth={2}
+            dot={false}
+            />
+            <Line
+            type="monotone"
+            dataKey="missed"
+            name="Пропущенные"
+            stroke="#dc2626"
+            strokeWidth={2}
+            dot={false}
+            />
+
+
         </LineChart>
       </ResponsiveContainer>
     </CardContent>
