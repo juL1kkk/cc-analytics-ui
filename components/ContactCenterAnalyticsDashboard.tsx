@@ -87,12 +87,12 @@ const COLORS = ["#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb", "#f3f4f6"]; // neutr
 const SENTIMENT_COLORS: Record<string, string> = {
   "Позитив": "#22c55e",     // зелёный
   "Нейтрально": "#f59e0b", // оранжевый
-  "Негатив": "#ef4444",    // красный
+  "Негатив": "#dc2626",    // красный
 };
 
 const GOAL_COLORS: Record<string, string> = {
   "Решено": "#22c55e",        // зелёный
-  "Эскалация": "#ef4444",    // красный
+  "Эскалация": "#dc2626",    // красный
   "Требует действий": "#f59e0b", // на будущее
 };
 
@@ -218,6 +218,103 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     for (const c of filteredCalls) s.add(c.topic);
     return Array.from(s).sort((a, b) => a.localeCompare(b));
   }, [filteredCalls]);
+
+  const topicCalls = useMemo(
+    () =>
+      topic === "all"
+        ? filteredCalls
+        : filteredCalls.filter((c) => c.topic === topic),
+    [filteredCalls, topic]
+  );
+
+  const topicAhtGauge = useMemo(() => {
+    const handled = topicCalls.filter(
+      (c) => c.status === "Завершён" && c.durationSec > 0
+    );
+
+    const ahtSec = handled.length
+      ? Math.round(handled.reduce((sum, c) => sum + c.durationSec, 0) / handled.length)
+      : 0;
+
+    const boundedAht = Math.max(0, Math.min(600, ahtSec));
+    return {
+      ahtSec,
+      data: [
+        { name: "AHT", value: boundedAht },
+        { name: "Остальное", value: 600 - boundedAht },
+      ],
+    };
+  }, [topicCalls]);
+
+  const topicChannelSplit = useMemo(() => {
+    const channelOrder: Array<{
+      key: Exclude<Channel, "all">;
+      label: string;
+      color: string;
+    }> = [
+      { key: "email", label: "Email", color: COLORS[0] },
+      { key: "push", label: "Push", color: COLORS[1] },
+      { key: "sms", label: "SMS", color: COLORS[2] },
+      { key: "voice", label: "Звонки", color: COLORS[3] },
+      { key: "chat", label: "Чат", color: COLORS[4] },
+    ];
+
+    const countByChannel = new Map<Exclude<Channel, "all">, number>([
+      ["voice", 0],
+      ["chat", 0],
+      ["email", 0],
+      ["sms", 0],
+      ["push", 0],
+    ]);
+
+    for (const c of topicCalls) {
+      countByChannel.set(c.channel, (countByChannel.get(c.channel) ?? 0) + 1);
+    }
+
+    const data = channelOrder
+      .map(({ key, label, color }) => ({
+        name: label,
+        value: countByChannel.get(key) ?? 0,
+        color,
+      }))
+      .filter((item) => item.value > 0);
+
+    return data.length ? data : [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
+  }, [topicCalls]);
+
+  const topicSentimentSplit = useMemo(() => {
+    if (!topicCalls.length) {
+      return [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
+    }
+
+    const missed = topicCalls.filter((c) => c.status === "Пропущен").length;
+    const missedRatio = missed / topicCalls.length;
+
+    const negative = Math.max(5, Math.min(70, Math.round(missedRatio * 100)));
+    const positive = Math.max(10, Math.round((1 - missedRatio) * 45));
+    const neutral = Math.max(5, 100 - positive - negative);
+
+    return [
+      { name: "Позитив", value: positive, color: SENTIMENT_COLORS["Позитив"] },
+      { name: "Нейтрально", value: neutral, color: SENTIMENT_COLORS["Нейтрально"] },
+      { name: "Негатив", value: negative, color: SENTIMENT_COLORS["Негатив"] },
+    ];
+  }, [topicCalls]);
+
+  const topicGoalSplit = useMemo(() => {
+    if (!topicCalls.length) {
+      return [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
+    }
+
+    const resolved = topicCalls.filter((c) => c.status === "Завершён").length;
+    const resolvedPct = Math.round((resolved / topicCalls.length) * 100);
+    const escalatedPct = 100 - resolvedPct;
+
+    return [
+      { name: "Решено", value: resolvedPct, color: GOAL_COLORS["Решено"] },
+      { name: "Эскалация", value: escalatedPct, color: GOAL_COLORS["Эскалация"] },
+    ];
+  }, [topicCalls]);
 
   const topicTimeSeries = useMemo(() => {
   const hours = ["09", "10", "11", "12", "13", "14", "15"];
@@ -1300,29 +1397,143 @@ const goalSplit = useMemo(() => {
           <YAxis allowDecimals={false} />
           <Tooltip />
           <Legend />
-          <Legend />
-            <Line
+          <Line
             type="monotone"
             dataKey="incoming"
             name="Обращения"
             stroke="#2563eb"
             strokeWidth={2}
             dot={false}
-            />
-            <Line
+          />
+          <Line
             type="monotone"
             dataKey="missed"
             name="Пропущенные"
             stroke="#dc2626"
             strokeWidth={2}
             dot={false}
-            />
-
-
+          />
         </LineChart>
       </ResponsiveContainer>
     </CardContent>
   </Card>
+
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <Card className="rounded-2xl">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Спидометр ср. Продолж.</CardTitle>
+      </CardHeader>
+      <CardContent className="h-[240px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={topicAhtGauge.data}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={60}
+              outerRadius={88}
+              startAngle={90}
+              endAngle={-270}
+              stroke="none"
+            >
+              <Cell fill="#111827" />
+              <Cell fill="#e5e7eb" />
+            </Pie>
+            <Tooltip />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="mt-2 text-center text-sm text-muted-foreground">
+          AHT: {formatSec(topicAhtGauge.ahtSec)}
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card className="rounded-2xl">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Распределение по каналам</CardTitle>
+      </CardHeader>
+      <CardContent className="h-[240px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={topicChannelSplit}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={55}
+              outerRadius={88}
+              stroke="none"
+            >
+              {topicChannelSplit.map((entry, idx) => (
+                <Cell key={`${entry.name}-${idx}`} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+
+    <Card className="rounded-2xl">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Эмоциональный фон</CardTitle>
+      </CardHeader>
+      <CardContent className="h-[240px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={topicSentimentSplit}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={55}
+              outerRadius={88}
+              stroke="none"
+            >
+              {topicSentimentSplit.map((entry, idx) => (
+                <Cell key={`${entry.name}-${idx}`} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+
+    <Card className="rounded-2xl">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Достижение цели</CardTitle>
+      </CardHeader>
+      <CardContent className="h-[240px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={topicGoalSplit}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={55}
+              outerRadius={88}
+              stroke="none"
+            >
+              {topicGoalSplit.map((entry, idx) => (
+                <Cell key={`${entry.name}-${idx}`} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  </div>
 </TabsContent>
 
               </div>
