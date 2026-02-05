@@ -1,0 +1,122 @@
+// PostgreSQL / dbdiagram.io
+// Документ описывает модель хранения данных для дашборда
+// "Расширенная аналитика контакт-центра" (components/ContactCenterAnalyticsDashboard.tsx)
+
+Enum interaction_status_code {
+  completed [note: 'Завершено']
+  missed [note: 'Пропущено']
+  waiting [note: 'Ожидание']
+  in_progress [note: 'В разговоре']
+}
+
+Table departments {
+  id bigserial [pk, note: 'PK отдела']
+  department_code varchar(64) [not null, unique, note: 'Технический код отдела (англ.), используется в API/интеграциях.']
+  name_ru varchar(255) [not null, note: 'Русское название отдела для UI-фильтра "Отдел".']
+  is_active boolean [not null, default: true, note: 'Признак активности справочника.']
+  created_at timestamptz [not null, default: `now()`, note: 'Время создания записи.']
+  updated_at timestamptz [not null, default: `now()`, note: 'Время обновления записи.']
+
+  Note: 'Справочник отделов (Контакт-центр, Контроль качества, Антифрод и т.д.).'
+
+  indexes {
+    (name_ru)
+  }
+}
+
+Table channels {
+  id bigserial [pk, note: 'PK канала']
+  channel_code varchar(32) [not null, unique, note: 'Код канала (англ.): voice/chat/email/sms/push.']
+  name_ru varchar(128) [not null, note: 'Русское отображаемое название канала.']
+  is_active boolean [not null, default: true, note: 'Признак активности канала.']
+  created_at timestamptz [not null, default: `now()`, note: 'Время создания записи.']
+  updated_at timestamptz [not null, default: `now()`, note: 'Время обновления записи.']
+
+  Note: 'Справочник каналов коммуникации для фильтров и группировок.'
+}
+
+Table queues {
+  id bigserial [pk, note: 'PK очереди']
+  queue_code varchar(64) [not null, unique, note: 'Код очереди (англ.): general/vip/antifraud.']
+  name_ru varchar(255) [not null, note: 'Русское название очереди для UI.']
+  department_id bigint [not null, ref: > departments.id, note: 'Отдел-владелец очереди. Нужен для согласованной фильтрации "Отдел" + "Очередь".']
+  is_active boolean [not null, default: true, note: 'Признак активности очереди.']
+  created_at timestamptz [not null, default: `now()`, note: 'Время создания записи.']
+  updated_at timestamptz [not null, default: `now()`, note: 'Время обновления записи.']
+
+  Note: 'Справочник очередей контакт-центра.'
+
+  indexes {
+    (department_id)
+    (name_ru)
+  }
+}
+
+Table operators {
+  id bigserial [pk, note: 'PK оператора']
+  operator_code varchar(64) [not null, unique, note: 'Технический код оператора (англ.) из кадровой/телефонии.']
+  full_name_ru varchar(255) [not null, note: 'ФИО оператора (рус.).']
+  department_id bigint [ref: > departments.id, note: 'Основной отдел оператора (nullable для внешних/непривязанных сотрудников).']
+  is_active boolean [not null, default: true, note: 'Признак активности оператора.']
+  created_at timestamptz [not null, default: `now()`, note: 'Время создания записи.']
+  updated_at timestamptz [not null, default: `now()`, note: 'Время обновления записи.']
+
+  Note: 'Справочник операторов для разреза "Операторы" и KPI по загрузке.'
+
+  indexes {
+    (department_id)
+    (full_name_ru)
+  }
+}
+
+Table topics {
+  id bigserial [pk, note: 'PK тематики']
+  topic_code varchar(128) [not null, unique, note: 'Код тематики (англ.) для API и ML-классификации.']
+  name_ru varchar(255) [not null, note: 'Человекочитаемое русское название тематики (например, "Сброс пароля").']
+  source_system varchar(64) [note: 'Источник классификации: crm/ivr/ml/manual.']
+  is_active boolean [not null, default: true, note: 'Признак активности тематики.']
+  created_at timestamptz [not null, default: `now()`, note: 'Время создания записи.']
+  updated_at timestamptz [not null, default: `now()`, note: 'Время обновления записи.']
+
+  Note: 'Справочник тематик. Выбран отдельной таблицей, чтобы нормализовать значения, исключить дубли и поддержать ML/CRM классификацию.'
+
+  indexes {
+    (name_ru)
+  }
+}
+
+Table interactions {
+  id bigserial [pk, note: 'PK факта обращения.']
+  external_id varchar(64) [not null, unique, note: 'Внешний идентификатор обращения (пример: C-10492).']
+  started_at timestamptz [not null, note: 'Дата/время начала обращения. Используется как основная ось времени для графиков.']
+
+  channel_id bigint [not null, ref: > channels.id, note: 'Канал обращения (voice/chat/email/sms/push).']
+  queue_id bigint [not null, ref: > queues.id, note: 'Очередь, в которую попало обращение.']
+  department_id bigint [not null, ref: > departments.id, note: 'Отдел, в который относится обращение. Может определяться по очереди/каналу или приходить из источника.']
+  operator_id bigint [ref: > operators.id, note: 'Оператор, обработавший обращение. Nullable для пропущенных/нераспределённых.']
+  topic_id bigint [ref: > topics.id, note: 'Тематика обращения, классификация из CRM/IVR/ML. Nullable, если тема ещё не определена.']
+
+  duration_sec int [not null, default: 0, note: 'Длительность обработки обращения в секундах (AHT-база).']
+  status interaction_status_code [not null, note: 'Состояние обращения: completed/missed/waiting/in_progress (UI: Завершён/Пропущен/Ожидание/В разговоре).']
+
+  created_at timestamptz [not null, default: `now()`, note: 'Время создания записи в хранилище.']
+  updated_at timestamptz [not null, default: `now()`, note: 'Время последнего обновления записи.']
+
+  Note: 'Факт коммуникаций/обращений — центральная таблица аналитики дашборда.'
+
+  indexes {
+    (started_at)
+    (started_at, channel_id)
+    (started_at, queue_id)
+    (started_at, department_id)
+    (topic_id, started_at)
+    (operator_id, started_at)
+    (status, started_at)
+  }
+
+  constraints {
+    `duration_sec >= 0` [name: 'chk_interactions_duration_non_negative']
+    `started_at IS NOT NULL` [name: 'chk_interactions_started_at_not_null']
+    `external_id IS NOT NULL` [name: 'chk_interactions_external_id_not_null']
+  }
+}
