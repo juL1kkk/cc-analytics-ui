@@ -148,7 +148,7 @@ export default function ContactCenterAnalyticsDashboard() {
   const topics = ["Авторизация ЛК", "Сброс пароля", "Консультация", "Ошибки в приложении"];
 
   const queues: CallRow["queue"][] = ["general", "vip", "antifraud"];
-  const channels: CallRow["channel"][] = ["voice", "chat", "email"];
+  const channels: CallRow["channel"][] = ["voice", "chat", "email", "sms", "push"];
 
   let id = period === "yesterday" ? 9000 : 10000;
   const depts: Array<"Контакт-центр" | "Контроль качества" | "Антифрод"> = [
@@ -967,7 +967,7 @@ const goalSplit = useMemo(() => {
       const cur = map.get(key);
       if (!cur) continue;
 
-      const response = mockResponseSec(c.channel);
+      const response = c.durationSec > 0 ? c.durationSec : 0;
 
       if (channelTab === "all") {
         cur[c.channel] += response;
@@ -1569,9 +1569,46 @@ const goalSplit = useMemo(() => {
                           <Legend />
                           {channelTab === "all" ? (
                             <>
-                              <Line type="monotone" dataKey="voice" name="Звонки" strokeWidth={2} dot={false} />
-                              <Line type="monotone" dataKey="chat" name="Чат" strokeWidth={2} dot={false} />
-                              <Line type="monotone" dataKey="email" name="Email" strokeWidth={2} dot={false} />
+                              <Line
+                                type="monotone"
+                                dataKey="voice"
+                                name="Звонки"
+                                stroke="#2563eb"
+                                strokeWidth={2}
+                                dot={false}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="chat"
+                                name="Чат"
+                                stroke="#22c55e"
+                                strokeWidth={2}
+                                dot={false}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="email"
+                                name="Email"
+                                stroke="#f97316"
+                                strokeWidth={2}
+                                dot={false}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="sms"
+                                name="SMS"
+                                stroke="#a855f7"
+                                strokeWidth={2}
+                                dot={false}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="push"
+                                name="Push"
+                                stroke="#0ea5e9"
+                                strokeWidth={2}
+                                dot={false}
+                              />
                             </>
                           ) : (
                             <Line
