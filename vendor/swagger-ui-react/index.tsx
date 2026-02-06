@@ -16,8 +16,19 @@ type SwaggerGlobal = {
   SwaggerUIStandalonePreset?: unknown;
 };
 
+<<<<<<< HEAD
+const BUNDLE_URLS = [
+  "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
+  "https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js",
+];
+const PRESET_URLS = [
+  "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js",
+  "https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js",
+];
+=======
 const BUNDLE_URL = "https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js";
 const PRESET_URL = "https://unpkg.com/swagger-ui-dist/swagger-ui-standalone-preset.js";
+>>>>>>> origin/main
 
 const loadScript = (src: string) =>
   new Promise<void>((resolve, reject) => {
@@ -34,6 +45,22 @@ const loadScript = (src: string) =>
     document.body.appendChild(script);
   });
 
+<<<<<<< HEAD
+const loadFirstAvailable = async (sources: string[]) => {
+  let lastError: Error | null = null;
+  for (const src of sources) {
+    try {
+      await loadScript(src);
+      return;
+    } catch (error) {
+      lastError = error as Error;
+    }
+  }
+  throw lastError ?? new Error("Failed to load Swagger UI assets");
+};
+
+=======
+>>>>>>> origin/main
 export default function SwaggerUI({ url }: SwaggerUIProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -41,8 +68,21 @@ export default function SwaggerUI({ url }: SwaggerUIProps) {
     let cancelled = false;
 
     const init = async () => {
+<<<<<<< HEAD
+      try {
+        await loadFirstAvailable(BUNDLE_URLS);
+        await loadFirstAvailable(PRESET_URLS);
+      } catch (error) {
+        if (containerRef.current) {
+          containerRef.current.textContent =
+            "Не удалось загрузить Swagger UI. Проверьте доступность CDN.";
+        }
+        return;
+      }
+=======
       await loadScript(BUNDLE_URL);
       await loadScript(PRESET_URL);
+>>>>>>> origin/main
 
       if (cancelled) {
         return;
