@@ -107,6 +107,7 @@ export default function ContactCenterAnalyticsDashboard() {
   const [query, setQuery] = useState<string>("");
   const [tab, setTab] = useState<string>("overview");
   const [topic, setTopic] = useState<string>("all");
+  const [selectedOperator, setSelectedOperator] = useState<string>("all");
 
 
   const calls: CallRow[] = useMemo(() => {
@@ -252,6 +253,17 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
       );
     });
   }, [calls, channel, queue, dept, query]);
+
+  const operatorOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of filteredCalls) s.add(c.operator);
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [filteredCalls]);
+
+  const operatorFilteredCalls = useMemo(() => {
+    if (selectedOperator === "all") return filteredCalls;
+    return filteredCalls.filter((c) => c.operator === selectedOperator);
+  }, [filteredCalls, selectedOperator]);
 
   const topicOptions = useMemo(() => {
     const s = new Set<string>();
@@ -701,7 +713,7 @@ const goalSplit = useMemo(() => {
     { t: string; ahtSum: number; cnt: number; asaSum: number }
   >();
 
-  for (const c of filteredCalls) {
+  for (const c of operatorFilteredCalls) {
     const hour = c.startedAt.split(":")[0];
     const key = `${hour}:00`;
 
@@ -733,7 +745,7 @@ const goalSplit = useMemo(() => {
       aht: x.cnt ? Math.round(x.ahtSum / x.cnt) : 0,
       asa: x.cnt ? Math.round(x.asaSum / x.cnt) : 0,
     }));
-}, [filteredCalls]);
+}, [operatorFilteredCalls]);
 
 
   const queueStats = useMemo(() => {
@@ -1263,20 +1275,43 @@ const goalSplit = useMemo(() => {
 
                   <Card className="rounded-2xl">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Динамика AHT и скорости ответа (ASA)</CardTitle>
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <CardTitle className="text-base">Динамика AHT и скорости ответа (ASA)</CardTitle>
+                        <div className="w-full md:w-[220px]">
+                          <Select value={selectedOperator} onValueChange={setSelectedOperator}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Оператор" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Все операторы</SelectItem>
+                              {operatorOptions.map((operator) => (
+                                <SelectItem key={operator} value={operator}>
+                                  {operator}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                     </CardHeader>
                     <CardContent className="h-[320px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={operatorAhtTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="t" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Line type="monotone" dataKey="aht" name="AHT (сек)" strokeWidth={2} dot={false} />
-                          <Line type="monotone" dataKey="asa" name="ASA (сек)" strokeWidth={2} dot={false} />
-                        </LineChart>
-                      </ResponsiveContainer>
+                      {operatorAhtTrend.length ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={operatorAhtTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="t" />
+                            <YAxis />
+                            <Tooltip />
+                            <Legend />
+                            <Line type="monotone" dataKey="aht" name="AHT (сек)" strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="asa" name="ASA (сек)" strokeWidth={2} dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex h-full items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">
+                          Ничего не найдено по заданным фильтрам.
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -1618,7 +1653,7 @@ const goalSplit = useMemo(() => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {filteredCalls.map((r) => (
+                      {operatorFilteredCalls.map((r) => (
                         <div key={r.id} className="rounded-2xl border bg-background p-3">
                           <div className="flex items-center justify-between gap-2">
                             <div className="text-sm font-medium">{r.id}</div>
@@ -1641,7 +1676,7 @@ const goalSplit = useMemo(() => {
                           </div>
                         </div>
                       ))}
-                      {!filteredCalls.length && (
+                      {!operatorFilteredCalls.length && (
                         <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
                           Ничего не найдено по заданным фильтрам.
                         </div>
