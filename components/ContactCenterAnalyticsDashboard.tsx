@@ -73,6 +73,25 @@ type CallRow = {
   resolution: "resolved" | "escalated" | "followup";
 };
 
+const CHANNEL_TAB_LABELS: Record<Channel, string> = {
+  all: "Все каналы",
+  voice: "Звонки",
+  chat: "Чат",
+  email: "Email",
+  sms: "SMS",
+  push: "Push",
+};
+
+function mockResponseSec(channel: CallRow["channel"]) {
+  return channel === "voice"
+    ? 15 + Math.random() * 15
+    : channel === "chat"
+    ? 30 + Math.random() * 25
+    : channel === "sms"
+    ? 40 + Math.random() * 40
+    : 120 + Math.random() * 300;
+}
+
 function formatSec(sec: number) {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
@@ -118,6 +137,7 @@ export default function ContactCenterAnalyticsDashboard() {
   const [topic, setTopic] = useState<string>("all");
   const [selectedOperator, setSelectedOperator] = useState<string>("all");
   const [selectedQueue, setSelectedQueue] = useState<string>("all");
+  const [channelTab, setChannelTab] = useState<Channel>("all");
 
 
   const calls: CallRow[] = useMemo(() => {
@@ -291,12 +311,20 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     [filteredCalls, selectedQueue]
   );
 
+  const channelTabCalls = useMemo(() => {
+    if (channelTab === "all") return filteredCalls;
+    return filteredCalls.filter((c) => c.channel === channelTab);
+  }, [filteredCalls, channelTab]);
+
   const latestCalls = useMemo(() => {
     if (tab === "queues" && selectedQueue !== "all") {
       return filteredCalls.filter((c) => c.queue === selectedQueue);
     }
+    if (tab === "channels") {
+      return channelTabCalls.slice(0, 10);
+    }
     return filteredCalls;
-  }, [filteredCalls, tab, selectedQueue]);
+  }, [filteredCalls, tab, selectedQueue, channelTabCalls]);
 
   const topicOptions = useMemo(() => {
     const s = new Set<string>();
@@ -873,14 +901,7 @@ const goalSplit = useMemo(() => {
     cur.incoming += 1;
 
     // простая модель времени ответа (сек)
-    const response =
-      c.channel === "voice"
-        ? 15 + Math.random() * 15
-        : c.channel === "chat"
-        ? 30 + Math.random() * 25
-        : c.channel === "sms"
-        ? 40 + Math.random() * 40
-        : 120 + Math.random() * 300;
+    const response = mockResponseSec(c.channel);
 
     cur.responseSum += response;
     cur.cnt += 1;
@@ -908,18 +929,26 @@ const goalSplit = useMemo(() => {
 }, [filteredCalls]);
 
 
-  const channelResponseTrend = useMemo(() => {
-  const map = new Map<
-    string,
-    { t: string; voice: number; chat: number; email: number; sms: number; push: number; cnt: Record<string, number> }
-  >();
+  const channelResponseTrendTab = useMemo(() => {
+    const hours = ["09", "10", "11", "12", "13", "14", "15", "16", "17"];
+    const map = new Map<
+      string,
+      {
+        t: string;
+        voice: number;
+        chat: number;
+        email: number;
+        sms: number;
+        push: number;
+        cnt: Record<string, number>;
+        valueSum: number;
+        valueCnt: number;
+      }
+    >();
 
-  for (const c of filteredCalls) {
-    const hour = c.startedAt.split(":")[0];
-    const key = `${hour}:00`;
-
-    const cur =
-      map.get(key) ?? {
+    for (const h of hours) {
+      const key = `${h}:00`;
+      map.set(key, {
         t: key,
         voice: 0,
         chat: 0,
@@ -927,34 +956,47 @@ const goalSplit = useMemo(() => {
         sms: 0,
         push: 0,
         cnt: { voice: 0, chat: 0, email: 0, sms: 0, push: 0 },
+        valueSum: 0,
+        valueCnt: 0,
+      });
+    }
+
+    for (const c of channelTabCalls) {
+      const hour = c.startedAt.split(":")[0];
+      const key = `${hour}:00`;
+      const cur = map.get(key);
+      if (!cur) continue;
+
+      const response = mockResponseSec(c.channel);
+
+      if (channelTab === "all") {
+        cur[c.channel] += response;
+        cur.cnt[c.channel] += 1;
+      } else {
+        cur.valueSum += response;
+        cur.valueCnt += 1;
+      }
+    }
+
+    return hours.map((h) => {
+      const key = `${h}:00`;
+      const cur = map.get(key)!;
+      if (channelTab === "all") {
+        return {
+          t: cur.t,
+          voice: cur.cnt.voice ? Math.round(cur.voice / cur.cnt.voice) : 0,
+          chat: cur.cnt.chat ? Math.round(cur.chat / cur.cnt.chat) : 0,
+          email: cur.cnt.email ? Math.round(cur.email / cur.cnt.email) : 0,
+          sms: cur.cnt.sms ? Math.round(cur.sms / cur.cnt.sms) : 0,
+          push: cur.cnt.push ? Math.round(cur.push / cur.cnt.push) : 0,
+        };
+      }
+      return {
+        t: cur.t,
+        value: cur.valueCnt ? Math.round(cur.valueSum / cur.valueCnt) : 0,
       };
-
-    const response =
-      c.channel === "voice"
-        ? 15 + Math.random() * 15
-        : c.channel === "chat"
-        ? 30 + Math.random() * 25
-        : c.channel === "sms"
-        ? 40 + Math.random() * 40
-        : 120 + Math.random() * 300;
-
-    cur[c.channel] += response;
-    cur.cnt[c.channel] += 1;
-
-    map.set(key, cur);
-  }
-
-  return Array.from(map.values())
-    .sort((a, b) => a.t.localeCompare(b.t))
-    .map((x) => ({
-      t: x.t,
-      voice: x.cnt.voice ? Math.round(x.voice / x.cnt.voice) : 0,
-      chat: x.cnt.chat ? Math.round(x.chat / x.cnt.chat) : 0,
-      email: x.cnt.email ? Math.round(x.email / x.cnt.email) : 0,
-      sms: x.cnt.sms ? Math.round(x.sms / x.cnt.sms) : 0,
-      push: x.cnt.push ? Math.round(x.push / x.cnt.push) : 0,
-    }));
-}, [filteredCalls]);
+    });
+  }, [channelTabCalls, channelTab]);
 
 
 
@@ -1496,19 +1538,50 @@ const goalSplit = useMemo(() => {
 
                   <Card className="rounded-2xl">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Динамика времени ответа (сек)</CardTitle>
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <CardTitle className="text-base">Динамика времени ответа (сек)</CardTitle>
+                        <div className="w-full md:w-[220px]">
+                          <Select
+                            value={channelTab}
+                            onValueChange={(value) => setChannelTab(value as Channel)}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Канал" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(CHANNEL_TAB_LABELS).map(([value, label]) => (
+                                <SelectItem key={value} value={value}>
+                                  {label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                     </CardHeader>
                     <CardContent className="h-[320px]">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={channelResponseTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                        <LineChart data={channelResponseTrendTab} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="t" />
                           <YAxis />
                           <Tooltip />
                           <Legend />
-                          <Line type="monotone" dataKey="voice" name="Звонки" strokeWidth={2} dot={false} />
-                          <Line type="monotone" dataKey="chat" name="Чат" strokeWidth={2} dot={false} />
-                          <Line type="monotone" dataKey="email" name="Email" strokeWidth={2} dot={false} />
+                          {channelTab === "all" ? (
+                            <>
+                              <Line type="monotone" dataKey="voice" name="Звонки" strokeWidth={2} dot={false} />
+                              <Line type="monotone" dataKey="chat" name="Чат" strokeWidth={2} dot={false} />
+                              <Line type="monotone" dataKey="email" name="Email" strokeWidth={2} dot={false} />
+                            </>
+                          ) : (
+                            <Line
+                              type="monotone"
+                              dataKey="value"
+                              name={CHANNEL_TAB_LABELS[channelTab]}
+                              strokeWidth={2}
+                              dot={false}
+                            />
+                          )}
                         </LineChart>
                       </ResponsiveContainer>
                     </CardContent>
