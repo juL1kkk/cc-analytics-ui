@@ -2,6 +2,7 @@
 
 import { CALLS_BY_PERIOD } from "@/mock/callsByPeriod";
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1024,6 +1025,9 @@ const goalSplit = useMemo(() => {
             <Button variant="outline" className="gap-2">
               <Download className="h-4 w-4" />
               Экспорт
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/swagger">Swagger</Link>
             </Button>
             <Button variant="ghost" size="icon" aria-label="Настройки">
               <Settings className="h-5 w-5" />
