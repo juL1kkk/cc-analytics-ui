@@ -8,6 +8,12 @@ import {
 } from "@/lib/analytics";
 import { query } from "@/lib/db";
 
+type OperatorTrendRow = {
+  t: string | Date;
+  ahtSec: number | null;
+  asaSec: number | null;
+};
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -63,11 +69,11 @@ export async function GET(request: Request) {
       GROUP BY 1
       ORDER BY 1
     `;
-    const trendResult = await query(trendSql, [
+    const trendResult = await query<OperatorTrendRow>(trendSql, [
       ...filters.values,
       granularity,
     ]);
-    const trend = trendResult.rows.map((row) => ({
+    const trend = trendResult.rows.map((row: OperatorTrendRow) => ({
       t: formatTime(row.t),
       ahtSec: row.ahtSec,
       asaSec: row.asaSec,
