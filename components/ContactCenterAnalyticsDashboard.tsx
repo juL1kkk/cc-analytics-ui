@@ -84,6 +84,15 @@ function kpiDelta(delta: number) {
   return `${sign}${delta}%`;
 }
 
+const queueLabel = (value: Queue) =>
+  value === "general"
+    ? "Общая"
+    : value === "vip"
+    ? "VIP"
+    : value === "antifraud"
+    ? "Антифрод"
+    : "Все очереди";
+
 const COLORS = ["#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb", "#f3f4f6"]; // neutral palette
 
 const SENTIMENT_COLORS: Record<string, string> = {
@@ -108,6 +117,7 @@ export default function ContactCenterAnalyticsDashboard() {
   const [tab, setTab] = useState<string>("overview");
   const [topic, setTopic] = useState<string>("all");
   const [selectedOperator, setSelectedOperator] = useState<string>("all");
+  const [selectedQueue, setSelectedQueue] = useState<string>("all");
 
 
   const calls: CallRow[] = useMemo(() => {
@@ -260,10 +270,33 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     return Array.from(s).sort((a, b) => a.localeCompare(b));
   }, [filteredCalls]);
 
+  const queueOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of filteredCalls) s.add(c.queue);
+    return Array.from(s).sort((a, b) =>
+      queueLabel(a as Queue).localeCompare(queueLabel(b as Queue), "ru")
+    );
+  }, [filteredCalls]);
+
   const operatorFilteredCalls = useMemo(() => {
     if (selectedOperator === "all") return filteredCalls;
     return filteredCalls.filter((c) => c.operator === selectedOperator);
   }, [filteredCalls, selectedOperator]);
+
+  const queueCalls = useMemo(
+    () =>
+      selectedQueue === "all"
+        ? filteredCalls
+        : filteredCalls.filter((c) => c.queue === selectedQueue),
+    [filteredCalls, selectedQueue]
+  );
+
+  const latestCalls = useMemo(() => {
+    if (tab === "queues" && selectedQueue !== "all") {
+      return filteredCalls.filter((c) => c.queue === selectedQueue);
+    }
+    return filteredCalls;
+  }, [filteredCalls, tab, selectedQueue]);
 
   const topicOptions = useMemo(() => {
     const s = new Set<string>();
@@ -803,16 +836,26 @@ const goalSplit = useMemo(() => {
 
 
   const queueDepthTrend = useMemo(
-    () => [
-      { t: "09:00", general: 8, vip: 1, antifraud: 4 },
-      { t: "10:00", general: 12, vip: 2, antifraud: 6 },
-      { t: "11:00", general: 15, vip: 2, antifraud: 7 },
-      { t: "12:00", general: 18, vip: 3, antifraud: 9 },
-      { t: "13:00", general: 20, vip: 3, antifraud: 10 },
-      { t: "14:00", general: 16, vip: 2, antifraud: 8 },
-      { t: "15:00", general: 13, vip: 2, antifraud: 7 },
-    ],
-    []
+    () => {
+      const hours = ["09", "10", "11", "12", "13", "14", "15"];
+      const map = new Map<string, number>();
+
+      for (const h of hours) {
+        map.set(`${h}:00`, 0);
+      }
+
+      for (const c of queueCalls) {
+        const key = `${c.startedAt.split(":")[0]}:00`;
+        if (!map.has(key)) continue;
+        map.set(key, (map.get(key) ?? 0) + 1);
+      }
+
+      return hours.map((h) => ({
+        t: `${h}:00`,
+        incoming: map.get(`${h}:00`) ?? 0,
+      }));
+    },
+    [queueCalls]
   );
 
   const channelVolumes = useMemo(() => {
@@ -1366,7 +1409,29 @@ const goalSplit = useMemo(() => {
 
                   <Card className="rounded-2xl">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Динамика длины очередей</CardTitle>
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <CardTitle className="text-base">Динамика длины очередей</CardTitle>
+                          <div className="text-xs text-muted-foreground">
+                            Фильтр: {queueLabel(selectedQueue as Queue)}
+                          </div>
+                        </div>
+                        <div className="w-full md:w-[220px]">
+                          <Select value={selectedQueue} onValueChange={setSelectedQueue}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Очередь" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Все</SelectItem>
+                              {queueOptions.map((queueOption) => (
+                                <SelectItem key={queueOption} value={queueOption}>
+                                  {queueLabel(queueOption as Queue)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                     </CardHeader>
                     <CardContent className="h-[320px]">
                       <ResponsiveContainer width="100%" height="100%">
@@ -1376,9 +1441,13 @@ const goalSplit = useMemo(() => {
                           <YAxis allowDecimals={false} />
                           <Tooltip />
                           <Legend />
-                          <Line type="monotone" dataKey="general" name="Общая" strokeWidth={2} dot={false} />
-                          <Line type="monotone" dataKey="vip" name="VIP" strokeWidth={2} dot={false} />
-                          <Line type="monotone" dataKey="antifraud" name="Антифрод" strokeWidth={2} dot={false} />
+                          <Line
+                            type="monotone"
+                            dataKey="incoming"
+                            name={queueLabel(selectedQueue as Queue)}
+                            strokeWidth={2}
+                            dot={false}
+                          />
                         </LineChart>
                       </ResponsiveContainer>
                     </CardContent>
@@ -1653,7 +1722,7 @@ const goalSplit = useMemo(() => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {operatorFilteredCalls.map((r) => (
+                      {latestCalls.map((r) => (
                         <div key={r.id} className="rounded-2xl border bg-background p-3">
                           <div className="flex items-center justify-between gap-2">
                             <div className="text-sm font-medium">{r.id}</div>
@@ -1676,7 +1745,7 @@ const goalSplit = useMemo(() => {
                           </div>
                         </div>
                       ))}
-                      {!operatorFilteredCalls.length && (
+                      {!latestCalls.length && (
                         <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
                           Ничего не найдено по заданным фильтрам.
                         </div>
