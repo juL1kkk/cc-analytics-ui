@@ -6,8 +6,8 @@ info:
     API для загрузки обращений (ingestion) и получения агрегатов (analytics)
     для UI "Расширенная аналитика контакт-центра".
 servers:
-  - url: https://example.local
-    description: Локальный/стендовый сервер
+  - url: /
+    description: Текущий домен (локально и в проде)
 
 tags:
   - name: Ingestion
