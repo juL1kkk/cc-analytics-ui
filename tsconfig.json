@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "swagger-ui-react": ["./vendor/swagger-ui-react"],
+      "swagger-ui-react/*": ["./vendor/swagger-ui-react/*"]
     }
   },
   "include": [
