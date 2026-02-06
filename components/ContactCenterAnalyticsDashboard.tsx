@@ -69,6 +69,8 @@ type CallRow = {
   topic: string;
   durationSec: number;
   status: "Завершён" | "Пропущен" | "Ожидание" | "В разговоре";
+  fcr: boolean;
+  resolution: "resolved" | "escalated" | "followup";
 };
 
 function formatSec(sec: number) {
@@ -139,6 +141,17 @@ for (const dept of depts) {
       // чтобы Антифрод выглядел логично: он “любит” antifraud
       const q = dept === "Антифрод" ? "antifraud" : queue;
 
+      const status = Math.random() < 0.12 ? "Пропущен" : "Завершён";
+      const resolution =
+        status === "Пропущен"
+          ? "followup"
+          : Math.random() < 0.75
+          ? "resolved"
+          : Math.random() < 0.6
+          ? "escalated"
+          : "followup";
+      const fcr = resolution === "resolved" && Math.random() < 0.7;
+
       result.push({
         id: `C-${id++}`,
         startedAt: `09:00`,
@@ -148,7 +161,9 @@ for (const dept of depts) {
         operator: operators[id % operators.length],
         topic: topics[id % topics.length],
         durationSec: 120 + Math.floor(Math.random() * 300),
-        status: Math.random() < 0.12 ? "Пропущен" : "Завершён",
+        status,
+        fcr,
+        resolution,
       });
     }
   }
@@ -159,6 +174,17 @@ for (const dept of depts) {
       const callsPerQueuePerHour = 3 + Math.floor(Math.random() * 4); // 3–6 на очередь в час
 
 // 👉 гарантируем одно SMS
+const status = Math.random() < 0.12 ? "Пропущен" : "Завершён";
+const resolution =
+  status === "Пропущен"
+    ? "followup"
+    : Math.random() < 0.72
+    ? "resolved"
+    : Math.random() < 0.55
+    ? "escalated"
+    : "followup";
+const fcr = resolution === "resolved" && Math.random() < 0.68;
+
 result.push({
   id: `C-${id++}`,
   startedAt: `${h}:05`,
@@ -168,12 +194,24 @@ result.push({
   operator: operators[id % operators.length],
   topic: topics[id % topics.length],
   durationSec: 160 + Math.floor(Math.random() * 180),
-  status: Math.random() < 0.12 ? "Пропущен" : "Завершён",
+  status,
+  fcr,
+  resolution,
 });
 
 // 👉 остальные обращения как раньше
 for (let i = 1; i < callsPerQueuePerHour; i++) {
   const ch = channels[(i + h.charCodeAt(0)) % channels.length];
+  const status = Math.random() < 0.12 ? "Пропущен" : "Завершён";
+  const resolution =
+    status === "Пропущен"
+      ? "followup"
+      : Math.random() < 0.78
+      ? "resolved"
+      : Math.random() < 0.6
+      ? "escalated"
+      : "followup";
+  const fcr = resolution === "resolved" && Math.random() < 0.7;
 
   result.push({
     id: `C-${id++}`,
@@ -189,7 +227,9 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     operator: operators[(i + id) % operators.length],
     topic: topics[(i + id) % topics.length],
     durationSec: 180 + Math.floor(Math.random() * 240),
-    status: Math.random() < 0.12 ? "Пропущен" : "Завершён",
+    status,
+    fcr,
+    resolution,
   });
 }
     }
@@ -319,8 +359,8 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
   const topicTimeSeries = useMemo(() => {
   const hours = ["09", "10", "11", "12", "13", "14", "15"];
 
-  const map = new Map<string, { incoming: number; missed: number }>();
-  for (const h of hours) map.set(`${h}:00`, { incoming: 0, missed: 0 });
+  const map = new Map<string, { solved: number; unsolved: number }>();
+  for (const h of hours) map.set(`${h}:00`, { solved: 0, unsolved: 0 });
 
   for (const c of filteredCalls) {
     if (topic !== "all" && c.topic !== topic) continue;
@@ -329,14 +369,20 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     const cur = map.get(key);
     if (!cur) continue;
 
-    cur.incoming += 1;
-    if (c.status === "Пропущен") cur.missed += 1;
+    const solved =
+      (c.status === "Завершён" && c.resolution === "resolved") || c.fcr;
+
+    if (solved) {
+      cur.solved += 1;
+    } else {
+      cur.unsolved += 1;
+    }
   }
 
   return hours.map((h) => {
     const t = `${h}:00`;
-    const v = map.get(t) ?? { incoming: 0, missed: 0 };
-    return { t, incoming: v.incoming, missed: v.missed };
+    const v = map.get(t) ?? { solved: 0, unsolved: 0 };
+    return { t, solved: v.solved, unsolved: v.unsolved };
   });
 }, [filteredCalls, topic]);
 
@@ -1399,16 +1445,16 @@ const goalSplit = useMemo(() => {
           <Legend />
           <Line
             type="monotone"
-            dataKey="incoming"
-            name="Обращения"
-            stroke="#2563eb"
+            dataKey="solved"
+            name="Решенные"
+            stroke="#22c55e"
             strokeWidth={2}
             dot={false}
           />
           <Line
             type="monotone"
-            dataKey="missed"
-            name="Пропущенные"
+            dataKey="unsolved"
+            name="Не решенные"
             stroke="#dc2626"
             strokeWidth={2}
             dot={false}
