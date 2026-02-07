@@ -1,25 +1,25 @@
 import { NextResponse } from "next/server";
-
 import { query } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 type ChannelRow = {
   id: number;
-  channel_code: string;
-  channel_name_ru: string;
+  name: string;
 };
 
 export async function GET() {
   try {
     const { rows } = await query<ChannelRow>(
-      "SELECT id, channel_code, channel_name_ru FROM public.channels ORDER BY channel_name_ru ASC, channel_code ASC",
+      "SELECT id, name FROM public.channels ORDER BY name ASC",
     );
 
+    // В UI/Swagger сейчас ожидаются поля code и nameRu.
+    // В текущей БД есть только name, поэтому временно маппим name -> code/nameRu
     const items = rows.map((row) => ({
       id: row.id,
-      code: row.channel_code,
-      nameRu: row.channel_name_ru,
+      code: row.name,
+      nameRu: row.name,
     }));
 
     return NextResponse.json({ items });
@@ -31,6 +31,7 @@ export async function GET() {
           ? error.message
           : String(error)
         : undefined;
+
     return NextResponse.json(
       {
         error: {
