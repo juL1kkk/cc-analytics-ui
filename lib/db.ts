@@ -1,6 +1,8 @@
-import { Pool, type QueryResultRow } from "pg";
+import { Pool } from "pg";
 
 let pool: Pool | null = null;
+
+type DbRow = Record<string, unknown>;
 
 function getPool(): Pool {
   if (pool) {
@@ -18,10 +20,10 @@ function getPool(): Pool {
   return pool;
 }
 
-export async function query<T extends QueryResultRow>(
+export async function query(
   sql: string,
   params: unknown[] = [],
-): Promise<{ rows: T[] }> {
-  const result = await getPool().query<T>(sql, params);
+): Promise<{ rows: DbRow[] }> {
+  const result = await getPool().query(sql, params);
   return { rows: result.rows };
 }
