@@ -1,8 +1,51 @@
 import { NextResponse } from "next/server";
+import { query } from "@/lib/db";
 
-export function GET() {
-  return NextResponse.json(
-    { error: { code: "NOT_IMPLEMENTED", message: "Not implemented yet" } },
-    { status: 501 },
-  );
+export const runtime = "nodejs";
+
+type DepartmentRow = {
+  id: number;
+  name: string;
+};
+
+export async function GET() {
+  try {
+    const { rows } = await query<DepartmentRow>(
+      `
+      SELECT id, name
+      FROM public.departments
+      ORDER BY name ASC
+      `,
+    );
+
+    // UI / Swagger ожидают единый формат:
+    // { id, code, nameRu }
+    const items = rows.map((row) => ({
+      id: row.id,
+      code: row.name,
+      nameRu: row.name,
+    }));
+
+    return NextResponse.json({ items });
+  } catch (error) {
+    console.error("departments error", error);
+
+    const details =
+      process.env.NODE_ENV !== "production"
+        ? error instanceof Error
+          ? error.message
+          : String(error)
+        : undefined;
+
+    return NextResponse.json(
+      {
+        error: {
+          code: "DB_ERROR",
+          message: "Database error",
+          ...(details ? { details } : {}),
+        },
+      },
+      { status: 500 },
+    );
+  }
 }
