@@ -12,24 +12,33 @@ type ChannelRow = {
 
 export async function GET() {
   try {
-    const { rows } = await query(
-      "SELECT id, channel_code, channel_name_ru FROM public.channels ORDER BY channel_name_ru",
+    const { rows } = await query<ChannelRow>(
+      "SELECT id, channel_code, channel_name_ru FROM public.channels ORDER BY channel_name_ru ASC, channel_code ASC",
     );
 
-    const items = rows.map((row) => {
-      const channel = row as ChannelRow;
-      return {
-        id: channel.id,
-        code: channel.channel_code,
-        nameRu: channel.channel_name_ru,
-      };
-    });
+    const items = rows.map((row) => ({
+      id: row.id,
+      code: row.channel_code,
+      nameRu: row.channel_name_ru,
+    }));
 
     return NextResponse.json({ items });
   } catch (error) {
-    console.error("Failed to load channels dictionary", error);
+    console.error("channels error", error);
+    const details =
+      process.env.NODE_ENV !== "production"
+        ? error instanceof Error
+          ? error.message
+          : String(error)
+        : undefined;
     return NextResponse.json(
-      { error: { code: "DB_ERROR", message: "Database error" } },
+      {
+        error: {
+          code: "DB_ERROR",
+          message: "Database error",
+          ...(details ? { details } : {}),
+        },
+      },
       { status: 500 },
     );
   }
