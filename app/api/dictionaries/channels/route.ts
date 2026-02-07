@@ -19,10 +19,11 @@ export async function GET(request: Request) {
     // UI/Swagger ожидают поля code и nameRu.
     // В текущей БД есть только name, поэтому временно маппим name -> code/nameRu
     const items = rows.map((row) => ({
-      id: row.id,
-      code: row.name,
-      nameRu: row.name,
+     id: Number(row.id),
+     code: row.name,
+     nameRu: row.name,
     }));
+
 
     return NextResponse.json({ items });
   } catch (error) {
