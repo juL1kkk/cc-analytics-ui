@@ -1,33 +1,33 @@
+import { Client } from "pg";
 import { NextResponse } from "next/server";
-
-import { query } from "@/lib/db";
 
 export const runtime = "nodejs";
 
-type ChannelRow = {
-  id: number;
-  code: string;
-  name_ru: string;
-};
-
 export async function GET() {
+  let client: Client | null = null;
   try {
-    const { rows } = await query<ChannelRow>(
-      "SELECT id, channel_code AS code, name_ru FROM public.channels WHERE is_active = true ORDER BY name_ru",
-    );
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json(
+        { ok: false, error: "DATABASE_URL is not set" },
+        { status: 500 },
+      );
+    }
 
-    return NextResponse.json({
-      items: rows.map((row) => ({
-        id: row.id,
-        code: row.code,
-        nameRu: row.name_ru,
-      })),
-    });
+    client = new Client({ connectionString: process.env.DATABASE_URL });
+    await client.connect();
+    await client.query("SELECT 1");
+
+    return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("Failed to load channels dictionary", error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Failed to load channels dictionary", message);
     return NextResponse.json(
-      { error: { code: "DB_ERROR", message: "Database error" } },
+      { ok: false, error: message },
       { status: 500 },
     );
+  } finally {
+    if (client) {
+      await client.end();
+    }
   }
 }
