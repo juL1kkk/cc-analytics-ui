@@ -1,35 +1,55 @@
 import { NextResponse } from "next/server";
-
 import { query } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 type TopicRow = {
   id: number;
-  topic_code: string;
-  topic_name_ru: string;
+  name: string;
+  active: boolean;
 };
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const { rows } = await query(
-      "SELECT id, topic_code, topic_name_ru FROM public.topics ORDER BY topic_name_ru",
-    );
+    const url = new URL(req.url);
+    const all = url.searchParams.get("all") === "1";
+    const debug = url.searchParams.get("debug") === "1";
 
-    return NextResponse.json({
-      items: rows.map((row) => {
-        const topic = row as TopicRow;
-        return {
-          id: topic.id,
-          code: topic.topic_code,
-          nameRu: topic.topic_name_ru,
-        };
-      }),
-    });
+    const sql = `
+      SELECT id, name, active
+      FROM public.topics
+      ${all ? "" : "WHERE active = true"}
+      ORDER BY active DESC, id ASC
+    `;
+
+    const { rows } = await query<TopicRow>(sql);
+
+    const items = rows.map((row) => ({
+      id: String(row.id),
+      code: String(row.id),   // т.к. в БД нет code — используем id
+      nameRu: row.name,
+      ...(debug ? { active: row.active } : {}),
+    }));
+
+    return NextResponse.json({ items });
   } catch (error) {
-    console.error("Failed to load topics dictionary", error);
+    console.error("topics error", error);
+
+    const details =
+      process.env.NODE_ENV !== "production"
+        ? error instanceof Error
+          ? error.message
+          : String(error)
+        : undefined;
+
     return NextResponse.json(
-      { error: { code: "DB_ERROR", message: "Database error" } },
+      {
+        error: {
+          code: "DB_ERROR",
+          message: "Database error",
+          ...(details ? { details } : {}),
+        },
+      },
       { status: 500 },
     );
   }
