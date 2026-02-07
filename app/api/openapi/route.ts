@@ -27,20 +27,23 @@ function ensureLocalServer(spec: string): string {
     return spec;
   }
 
-  const hasLocalServer = lines.some((line) =>
-    /^\s*-\s*url:\s*\/\s*$/.test(line),
-  );
-
-  if (hasLocalServer) {
-    return spec;
+  const updated: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (i === serversIndex) {
+      updated.push("servers:");
+      updated.push("  - url: /");
+      updated.push("    description: Текущий хост (Vercel/локальный)");
+      i += 1;
+      while (i < lines.length && (lines[i].startsWith("  ") || lines[i] === "")) {
+        i += 1;
+      }
+      continue;
+    }
+    updated.push(line);
+    i += 1;
   }
 
-  lines.splice(
-    serversIndex + 1,
-    0,
-    "  - url: /",
-    "    description: Текущий хост (Vercel/локальный)",
-  );
-
-  return lines.join("\n");
+  return updated.join("\n");
 }

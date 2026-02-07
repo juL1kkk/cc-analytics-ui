@@ -6,22 +6,25 @@ export const runtime = "nodejs";
 
 type TopicRow = {
   id: number;
-  code: string;
-  name_ru: string;
+  topic_code: string;
+  topic_name_ru: string;
 };
 
 export async function GET() {
   try {
-    const { rows } = await query<TopicRow>(
-      "SELECT id, topic_code AS code, name_ru FROM public.topics WHERE is_active = true ORDER BY name_ru",
+    const { rows } = await query(
+      "SELECT id, topic_code, topic_name_ru FROM public.topics ORDER BY topic_name_ru",
     );
 
     return NextResponse.json({
-      items: rows.map((row) => ({
-        id: row.id,
-        code: row.code,
-        nameRu: row.name_ru,
-      })),
+      items: rows.map((row) => {
+        const topic = row as TopicRow;
+        return {
+          id: topic.id,
+          code: topic.topic_code,
+          nameRu: topic.topic_name_ru,
+        };
+      }),
     });
   } catch (error) {
     console.error("Failed to load topics dictionary", error);
