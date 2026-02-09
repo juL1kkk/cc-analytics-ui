@@ -1,38 +1,45 @@
+import { getOperators as getOperatorsMock } from "@/lib/analytics/operators/mock";
+import { getOperators as getOperatorsReal } from "@/lib/analytics/operators/real";
+import { getAnalyticsDataSource } from "@/lib/analytics/provider";
 import { NextResponse } from "next/server";
 
-type OperatorRow = {
-  operator_id: number;
-  operator_name_ru: string;
-  handled: number;
-  missed: number;
-  aht_sec: number | null;
-  fcr_pct: number | null;
+const parseNumber = (value: string | null) => {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 };
 
-type OperatorTrendRow = {
-  t: string;
-  aht_sec: number | null;
-  asa_sec: number | null;
-};
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const params = {
+    period: searchParams.get("period") ?? undefined,
+    from: searchParams.get("from") ?? undefined,
+    to: searchParams.get("to") ?? undefined,
+    dept: searchParams.get("dept") ?? undefined,
+    channel: searchParams.get("channel") ?? undefined,
+    queue: searchParams.get("queue") ?? undefined,
+    topic: searchParams.get("topic") ?? undefined,
+    q: searchParams.get("q") ?? undefined,
+    limit: parseNumber(searchParams.get("limit")),
+    offset: parseNumber(searchParams.get("offset")),
+  };
 
-export function GET() {
-  const rows: OperatorRow[] = [];
-  const trendRows: OperatorTrendRow[] = [];
+  try {
+    const dataSource = getAnalyticsDataSource();
+    const data =
+      dataSource === "MOCK"
+        ? await getOperatorsMock(params)
+        : await getOperatorsReal(params);
 
-  const items = rows.map((row) => ({
-    operatorId: row.operator_id,
-    operatorNameRu: row.operator_name_ru,
-    handled: row.handled,
-    missed: row.missed,
-    ahtSec: row.aht_sec,
-    fcrPct: row.fcr_pct,
-  }));
-
-  const trend = trendRows.map((row) => ({
-    t: row.t,
-    ahtSec: row.aht_sec,
-    asaSec: row.asa_sec,
-  }));
-
-  return NextResponse.json({ items, trend });
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("[analytics:operators]", error);
+    return NextResponse.json(
+      { message: "ANALYTICS_OPERATORS_ERROR" },
+      { status: 500 },
+    );
+  }
 }

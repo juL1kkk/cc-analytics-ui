@@ -1,8 +1,36 @@
+import { getAnalyticsDataSource } from "@/lib/analytics/provider";
+import { getTopicTimeSeries as getTopicTimeSeriesMock } from "@/lib/analytics/topics/timeseries/mock";
+import { getTopicTimeSeries as getTopicTimeSeriesReal } from "@/lib/analytics/topics/timeseries/real";
 import { NextResponse } from "next/server";
 
-export function GET() {
-  return NextResponse.json(
-    { error: { code: "NOT_IMPLEMENTED", message: "Not implemented yet" } },
-    { status: 501 },
-  );
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const topicFilter = searchParams.get("topic") ?? "all";
+  const params = {
+    period: searchParams.get("period") ?? undefined,
+    from: searchParams.get("from") ?? undefined,
+    to: searchParams.get("to") ?? undefined,
+    dept: searchParams.get("dept") ?? undefined,
+    channel: searchParams.get("channel") ?? undefined,
+    queue: searchParams.get("queue") ?? undefined,
+    topic: searchParams.get("topic") ?? undefined,
+    q: searchParams.get("q") ?? undefined,
+    topicFilter,
+  };
+
+  try {
+    const dataSource = getAnalyticsDataSource();
+    const data =
+      dataSource === "MOCK"
+        ? await getTopicTimeSeriesMock(params)
+        : await getTopicTimeSeriesReal(params);
+
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("[analytics:topics:timeseries]", error);
+    return NextResponse.json(
+      { message: "ANALYTICS_TOPICS_TIMESERIES_ERROR" },
+      { status: 500 },
+    );
+  }
 }
