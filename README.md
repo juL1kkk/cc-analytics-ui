@@ -20,6 +20,23 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Analytics data source
+
+Analytics endpoints can be switched between real PostgreSQL data and generated mock data via an environment variable.
+
+Local development (`.env.local`):
+
+```bash
+ANALYTICS_DATA_SOURCE=MOCK
+```
+
+Vercel:
+
+1. Open your project in Vercel.
+2. Go to **Settings → Environment Variables**.
+3. Add `ANALYTICS_DATA_SOURCE` with value `MOCK` (or `REAL_DB`).
+4. Redeploy to apply the change.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

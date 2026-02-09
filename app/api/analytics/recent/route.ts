@@ -1,36 +1,45 @@
+import { getAnalyticsDataSource } from "@/lib/analytics/provider";
+import { getRecent as getRecentMock } from "@/lib/analytics/recent/mock";
+import { getRecent as getRecentReal } from "@/lib/analytics/recent/real";
 import { NextResponse } from "next/server";
 
-type RecentRow = {
-  external_id: string;
-  started_at: string;
-  channel_code: string;
-  channel_name_ru: string;
-  queue_code: string;
-  queue_name_ru: string;
-  department_name_ru: string;
-  operator_name_ru: string | null;
-  topic_name_ru: string | null;
-  duration_sec: number;
-  status_code: "completed" | "missed" | "waiting" | "in_progress";
-  status_ru: "Завершён" | "Пропущен" | "Ожидание" | "В разговоре";
+const parseNumber = (value: string | null) => {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 };
 
-export function GET() {
-  const rows: RecentRow[] = [];
-  const items = rows.map((row) => ({
-    externalId: row.external_id,
-    startedAt: row.started_at,
-    channelCode: row.channel_code,
-    channelNameRu: row.channel_name_ru,
-    queueCode: row.queue_code,
-    queueNameRu: row.queue_name_ru,
-    departmentNameRu: row.department_name_ru,
-    operatorNameRu: row.operator_name_ru,
-    topicNameRu: row.topic_name_ru,
-    durationSec: row.duration_sec,
-    statusCode: row.status_code,
-    statusRu: row.status_ru,
-  }));
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const params = {
+    period: searchParams.get("period") ?? undefined,
+    from: searchParams.get("from") ?? undefined,
+    to: searchParams.get("to") ?? undefined,
+    dept: searchParams.get("dept") ?? undefined,
+    channel: searchParams.get("channel") ?? undefined,
+    queue: searchParams.get("queue") ?? undefined,
+    topic: searchParams.get("topic") ?? undefined,
+    q: searchParams.get("q") ?? undefined,
+    limit: parseNumber(searchParams.get("limit")),
+    offset: parseNumber(searchParams.get("offset")),
+  };
 
-  return NextResponse.json({ items, total: rows.length });
+  try {
+    const dataSource = getAnalyticsDataSource();
+    const data =
+      dataSource === "MOCK"
+        ? await getRecentMock(params)
+        : await getRecentReal(params);
+
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("[analytics:recent]", error);
+    return NextResponse.json(
+      { message: "ANALYTICS_RECENT_ERROR" },
+      { status: 500 },
+    );
+  }
 }
