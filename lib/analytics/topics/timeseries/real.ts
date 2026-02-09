@@ -62,7 +62,11 @@ export async function getTopicTimeSeries(
       SELECT
         date_trunc('hour', started_at) AS t,
         COUNT(*) AS incoming,
-        COUNT(*) FILTER (WHERE status = 'missed') AS missed
+        COUNT(*) FILTER (
+          WHERE status = 'unresolved'
+           AND ended_at IS NULL
+        ) AS missed
+
       FROM interactions
       WHERE ${filters.join(" AND ")}
       GROUP BY t
