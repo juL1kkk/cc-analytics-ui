@@ -3,15 +3,25 @@ import { getTimeSeries as getTimeSeriesReal } from "@/lib/analytics/timeseries/r
 import { getAnalyticsDataSource } from "@/lib/analytics/provider";
 import { NextResponse } from "next/server";
 
+const normalizeGranularity = (
+  value: string | null,
+): "auto" | "hour" | "day" | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized === "auto" || normalized === "hour" || normalized === "day") {
+    return normalized;
+  }
+
+  return undefined;
+};
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const granularityParam = searchParams.get("granularity");
-  const granularity =
-    granularityParam === "auto" ||
-    granularityParam === "hour" ||
-    granularityParam === "day"
-      ? granularityParam
-      : undefined;
+  const granularity = normalizeGranularity(searchParams.get("granularity"));
 
   const params = {
     period: searchParams.get("period") ?? undefined,
