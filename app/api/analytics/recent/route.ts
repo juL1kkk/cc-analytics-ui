@@ -4,10 +4,7 @@ import { getRecent as getRecentReal } from "@/lib/analytics/recent/real";
 import { NextResponse } from "next/server";
 
 const parseNumber = (value: string | null) => {
-  if (!value) {
-    return undefined;
-  }
-
+  if (!value) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 };
@@ -37,8 +34,20 @@ export async function GET(request: Request) {
     return NextResponse.json(data);
   } catch (error) {
     console.error("[analytics:recent]", error);
+
+    // details возвращаем ТОЛЬКО если явно передан debug=1
+    const wantDetails = searchParams.get("debug") === "1";
+    const details = wantDetails
+      ? error instanceof Error
+        ? error.message
+        : String(error)
+      : undefined;
+
     return NextResponse.json(
-      { message: "ANALYTICS_RECENT_ERROR" },
+      {
+        message: "ANALYTICS_RECENT_ERROR",
+        ...(details ? { details } : {}),
+      },
       { status: 500 },
     );
   }
