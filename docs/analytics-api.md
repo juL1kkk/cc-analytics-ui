@@ -557,3 +557,130 @@ curl "http://localhost:3000/api/analytics/topics/timeseries?topic=all&from=2024-
 ```bash
 curl "http://localhost:3000/api/analytics/recent?from=2024-02-01T00:00:00Z&to=2024-02-02T00:00:00Z&limit=20"
 ```
+
+### 2.9 `GET /api/analytics/sentiment`
+**Назначение**: donut-диаграмма «Эмоциональный фон» по таблице WMT responses.
+
+**Параметры**:
+- `from`, `to` — используются (если не переданы, берутся последние 24 часа).
+- `status` — используется только если в WMT-таблице есть колонка `status`; по умолчанию `success`.
+- `active` — используется только если в WMT-таблице есть колонка `active`; по умолчанию `true`.
+- `q` — в MVP не используется.
+- `debug=1` — при ошибке добавляет поле `details` в ответ 500.
+
+**Ответ (пример)**:
+```json
+{
+  "items": [
+    { "nameRu": "Негатив", "value": 10 },
+    { "nameRu": "Нейтрально", "value": 20 },
+    { "nameRu": "Позитив", "value": 30 }
+  ],
+  "total": 60
+}
+```
+
+**Как считается**:
+- группировка по `communicationColor` (`communication_color`) с нормализацией `lower()`;
+- маппинг цветов:
+  - `red` → `Негатив`
+  - `yellow` → `Нейтрально`
+  - `green` → `Позитив`
+- значения `NULL`/неизвестные цвета отбрасываются;
+- порядок в `items` фиксированный: Негатив → Нейтрально → Позитив;
+- `total` = сумма всех `value`.
+
+**Реальная таблица/колонки в БД**:
+- В коде используется авто-обнаружение таблицы в `public` через `information_schema.columns`.
+- Провайдер ищет таблицу, где одновременно есть `communicationColor|communication_color` и `createdOn|created_on`.
+- Далее поля алиасятся к единому виду (`createdOn`, `communicationColor`, `status`, `active`) внутри SQL CTE, поэтому поддерживаются варианты camelCase/snake_case.
+
+**Ограничения MVP**:
+- Нет связи с `interactions`, поэтому нельзя фильтровать по теме/очереди/каналу/оператору.
+- Полнотекстовый `q` пока не влияет на результат.
+
+---
+
+### 3.5 Рекомендации по БД для `sentiment` (применять вручную)
+
+> Ниже только рекомендации/DDL-примеры. API эти SQL **не выполняет автоматически**.
+
+```sql
+-- 0) Определить таблицу/колонки WMT в public
+SELECT table_schema, table_name, column_name
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND lower(column_name) IN (
+    'requestid','request_id',
+    'status',
+    'communicationcolor','communication_color',
+    'callid','call_id',
+    'active',
+    'transcription',
+    'communicationresult','communication_result',
+    'customersatisfaction','customer_satisfaction',
+    'createdon','created_on',
+    'updatedon','updated_on',
+    'createdby','created_by',
+    'updatedby','updated_by',
+    'version',
+    'id'
+  )
+ORDER BY table_name, column_name;
+
+-- 1) Индекс по времени (обязательный для диапазонных фильтров)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wmt_created_on
+  ON public.<wmt_table>(<created_col>);
+
+-- 2) Составной индекс под частый WHERE status + active + created
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wmt_status_active_created
+  ON public.<wmt_table>(<status_col>, <active_col>, <created_col>);
+
+-- 3) Опциональный индекс по communicationColor (если много агрегаций)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wmt_communication_color
+  ON public.<wmt_table>(<communication_color_col>);
+```
+
+**Если нужен будущий фильтр sentiment по тематике/очереди/оператору**:
+
+Вариант A (если допустимо менять `interactions`):
+```sql
+ALTER TABLE public.interactions
+  ADD COLUMN IF NOT EXISTS external_id text,
+  ADD COLUMN IF NOT EXISTS call_id text,
+  ADD COLUMN IF NOT EXISTS request_id text;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_interactions_call_id
+  ON public.interactions(call_id);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_interactions_request_id
+  ON public.interactions(request_id);
+```
+
+Вариант B (таблица связки):
+```sql
+CREATE TABLE IF NOT EXISTS public.interaction_wmt_map (
+  interaction_id bigint NOT NULL,
+  call_id varchar(128),
+  request_id varchar(128),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (interaction_id, created_at)
+);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_interaction_wmt_map_call_id
+  ON public.interaction_wmt_map(call_id);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_interaction_wmt_map_request_id
+  ON public.interaction_wmt_map(request_id);
+```
+
+---
+
+### Sentiment
+```bash
+curl "http://localhost:3000/api/analytics/sentiment?from=2024-02-01T00:00:00Z&to=2024-02-02T00:00:00Z"
+```
+
+```bash
+curl "http://localhost:3000/api/analytics/sentiment?from=2024-02-01&to=2024-02-02&status=success&active=true"
+```

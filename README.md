@@ -55,3 +55,17 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Testing sentiment analytics endpoint
+
+Set real DB mode:
+
+```bash
+ANALYTICS_DATA_SOURCE=REAL_DB
+```
+
+Example request:
+
+```bash
+curl "http://localhost:3000/api/analytics/sentiment?from=2024-02-01T00:00:00Z&to=2024-02-02T00:00:00Z"
+```
