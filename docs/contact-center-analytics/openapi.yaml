@@ -357,6 +357,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/RecentResponse'
 
+  /api/analytics/sentiment:
+    get:
+      tags: [Analytics]
+      summary: Эмоциональный фон (donut по communicationColor)
+      description: |
+        Минимальный MVP-агрегат по таблице WMT responses.
+        Считает распределение коммуникаций по цвету: red/yellow/green.
+      parameters:
+        - $ref: '#/components/parameters/sentimentFrom'
+        - $ref: '#/components/parameters/sentimentTo'
+        - $ref: '#/components/parameters/sentimentStatus'
+        - $ref: '#/components/parameters/sentimentActive'
+        - $ref: '#/components/parameters/q'
+      responses:
+        '200':
+          description: Donut-распределение эмоционального фона
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SentimentResponse'
+
 components:
   parameters:
     period:
@@ -419,6 +440,48 @@ components:
       schema:
         type: string
       description: Поиск по externalId, оператору, теме.
+    sentimentFrom:
+      in: query
+      name: from
+      required: false
+      schema:
+        oneOf:
+          - type: string
+            format: date-time
+          - type: string
+            format: date
+      description: Начало периода (допускается дата или дата-время).
+    sentimentTo:
+      in: query
+      name: to
+      required: false
+      schema:
+        oneOf:
+          - type: string
+            format: date-time
+          - type: string
+            format: date
+      description: Конец периода (допускается дата или дата-время).
+    sentimentStatus:
+      in: query
+      name: status
+      required: false
+      schema:
+        type: string
+      description: |
+        Фильтр по статусу WMT response. Если колонка `status` есть и параметр не передан,
+        по умолчанию используется `success`.
+    sentimentActive:
+      in: query
+      name: active
+      required: false
+      schema:
+        oneOf:
+          - type: boolean
+          - type: string
+      description: |
+        Фильтр по флагу активности WMT response. Если колонка `active` есть и параметр
+        не передан, по умолчанию используется `true`.
     limit:
       in: query
       name: limit
@@ -904,6 +967,26 @@ components:
             statusCode: completed
             statusRu: Завершён
         total: 1
+
+    SentimentResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DonutSlice'
+        total:
+          type: integer
+          description: Сумма value по всем сегментам.
+      example:
+        items:
+          - nameRu: Негатив
+            value: 10
+          - nameRu: Нейтрально
+            value: 20
+          - nameRu: Позитив
+            value: 30
+        total: 60
 
     ErrorResponse:
       type: object
