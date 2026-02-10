@@ -149,6 +149,45 @@ paths:
                     items:
                       $ref: '#/components/schemas/DictionaryOperator'
 
+  /api/dictionaries/users:
+    get:
+      tags: [Dictionaries]
+      summary: Get users dictionary
+      description: |
+        Возвращает список пользователей из `cc_replica."User"`.
+        По умолчанию возвращаются только активные пользователи.
+        Установите `all=true`, чтобы включить неактивных.
+      parameters:
+        - in: query
+          name: all
+          required: false
+          description: Include inactive users in the response when set to true.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        code:
+                          type: string
+                        nameRu:
+                          type: string
+                      required: [id, code, nameRu]
+                required: [items]
+
   /api/dictionaries/topics:
     get:
       tags: [Dictionaries]
