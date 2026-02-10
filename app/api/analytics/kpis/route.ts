@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+
   const params = {
     period: searchParams.get("period") ?? undefined,
     from: searchParams.get("from") ?? undefined,
@@ -18,12 +19,17 @@ export async function GET(request: Request) {
 
   try {
     const dataSource = getAnalyticsDataSource();
-    const data =
-      dataSource === "MOCK"
-        ? await getKpisMock(params)
-        : await getKpisReal(params);
 
-    return NextResponse.json(data);
+    // ЖЕЛЕЗНАЯ ПРОВЕРКА: видно в логах какой режим реально выбран
+    console.log("[analytics:kpis] dataSource =", dataSource);
+
+    const data =
+      dataSource === "MOCK" ? await getKpisMock(params) : await getKpisReal(params);
+
+    // ЖЕЛЕЗНАЯ ПРОВЕРКА: видно снаружи (curl -i) какой режим отработал
+    const res = NextResponse.json(data, { status: 200 });
+    res.headers.set("x-analytics-data-source", dataSource);
+    return res;
   } catch (error) {
     console.error("[analytics:kpis]", error);
     return NextResponse.json(
