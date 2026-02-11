@@ -152,7 +152,7 @@ paths:
   /api/dictionaries/users:
     get:
       tags: [Dictionaries]
-      summary: Get users dictionary
+      summary: Справочник пользователей
       description: |
         Возвращает список пользователей из `cc_replica."User"`.
         По умолчанию возвращаются только активные пользователи.
