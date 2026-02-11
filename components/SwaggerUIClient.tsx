@@ -3,13 +3,17 @@
 import SwaggerUI from "swagger-ui-react";
 import "swagger-ui-react/swagger-ui.css";
 
+const SwaggerUIAny = SwaggerUI as unknown as React.FC<any>;
+
 export default function SwaggerUIClient() {
-  // если у вас спека лежит по другому URL — поменяй здесь
   const specUrl = "/api/openapi";
 
   return (
     <div className="w-full">
-      <SwaggerUI url={specUrl} docExpansion="list" />
+      <SwaggerUIAny
+        url={specUrl}
+        swaggerOptions={{ docExpansion: "list" }}
+      />
     </div>
   );
 }
