@@ -8,7 +8,6 @@ info:
 servers:
   - url: /
     description: Текущий хост (Vercel/локальный)
-
 tags:
   - name: Ingestion
     description: Загрузка и нормализация данных в БД
@@ -18,80 +17,6 @@ tags:
     description: Агрегаты для графиков и таблиц UI
 
 paths:
-  
-  /api/dictionaries/channels/v2:
-    get:
-      tags: 
-      - Dictionaries (cc_replica)
-      summary: Справочник каналов (v2, cc_replica)
-      responses:
-        '200':
-          description: Список каналов
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/DictionaryChannel'
-
-  
-  /api/dictionaries/departments/v2:
-    get:
-      tags:
-        - Dictionaries (cc_replica)
-      summary: Справочник отделов (v2)
-      description: Dictionary backed by cc_replica."Department".
-      operationId: getDictionaryDepartmentsV2
-      parameters:
-        - in: query
-          name: q
-          schema: { type: string }
-          required: false
-          description: Search by code/name.
-        - in: query
-          name: limit
-          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
-          required: false
-        - in: query
-          name: offset
-          schema: { type: integer, minimum: 0, default: 0 }
-          required: false
-        - in: query
-          name: debug
-          schema: { type: string, enum: ["0","1"] }
-          required: false
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items:
-                    type: array
-                    items:
-                      type: object
-                      required: [id, code, nameRu]
-                      properties:
-                        id: { type: string, format: uuid }
-                        code: { type: string }
-                        nameRu: { type: string }
-                        active: { type: boolean }
-                  limit: { type: integer }
-                  offset: { type: integer }
-        "500":
-          description: Database error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-
   /api/ingest/interactions:
     post:
       tags: [Ingestion]
