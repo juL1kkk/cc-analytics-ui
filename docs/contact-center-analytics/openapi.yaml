@@ -12,8 +12,10 @@ servers:
 tags:
   - name: Ingestion
     description: Загрузка и нормализация данных в БД
-  - name: Dictionaries
-    description: Чтение справочников
+  - name: Dictionaries (cc_replica)
+    description: Справочники из схемы cc_replica (реплика КЦ)
+  - name: Dictionaries (public)
+    description: Справочники из public (legacy)
   - name: Analytics
     description: Агрегаты для графиков и таблиц UI
 
@@ -83,7 +85,7 @@ paths:
 
   /api/dictionaries/channels:
     get:
-      tags: [Dictionaries]
+      tags: [Dictionaries (public)]
       summary: Справочник каналов
       responses:
         '200':
@@ -100,7 +102,7 @@ paths:
 
   /api/dictionaries/queues:
     get:
-      tags: [Dictionaries]
+      tags: [Dictionaries (public)]
       summary: Справочник очередей
       responses:
         '200':
@@ -117,7 +119,7 @@ paths:
 
   /api/dictionaries/departments:
     get:
-      tags: [Dictionaries]
+      tags: [Dictionaries (public)]
       summary: Справочник отделов
       responses:
         '200':
@@ -134,7 +136,7 @@ paths:
 
   /api/dictionaries/operators:
     get:
-      tags: [Dictionaries]
+      tags: [Dictionaries (public)]
       summary: Справочник операторов
       responses:
         '200':
@@ -151,7 +153,7 @@ paths:
 
   /api/dictionaries/users:
     get:
-      tags: [Dictionaries]
+      tags: [Dictionaries (cc_replica)]
       summary: Get users dictionary
       description: |
         Возвращает список пользователей из `cc_replica."User"`.
@@ -190,7 +192,7 @@ paths:
 
   /api/dictionaries/topics:
     get:
-      tags: [Dictionaries]
+      tags: [Dictionaries (public)]
       summary: Справочник тематик
       responses:
         '200':
