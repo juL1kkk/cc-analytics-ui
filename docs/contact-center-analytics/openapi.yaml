@@ -149,6 +149,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/analytics/operators/v2:
+    get:
+      tags:
+        - Analytics (cc_replica)
+      summary: Операторы (v2, cc_replica + FsCdr)
+      description: Агрегаты по операторам через связку Call.fs_uuid → FsCdr.
+      operationId: getOperatorsV2
+      parameters:
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/dept'
+        - $ref: '#/components/parameters/queue'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorsResponse'
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              
+
   /api/analytics/queues/v2:
     get:
       tags:
