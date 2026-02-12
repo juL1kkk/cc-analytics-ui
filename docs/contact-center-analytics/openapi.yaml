@@ -55,6 +55,38 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/DictionaryChannel'
+
+
+  /api/analytics/timeseries/v2:
+    get:
+      tags:
+        - Analytics (cc_replica)
+      summary: Временной ряд KPI (v2, CDR/FsCdr)
+      description: TimeSeries по cc_replica."FsCdr" (incoming/missed/ahtSec).
+      operationId: getTimeSeriesV2
+      parameters:
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/queue'
+        - in: query
+          name: granularity
+          required: false
+          schema: { type: string, enum: [hour, day], default: hour }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesResponse'
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                    
                       
   /api/analytics/kpis/v2:
     get:
