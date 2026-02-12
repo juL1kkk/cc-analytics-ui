@@ -175,7 +175,42 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              
+
+  /api/analytics/topics/timeseries/v2:
+    get:
+      tags:
+        - Analytics (cc_replica)
+      summary: Тренд по тематике (v2, cc_replica)
+      description: TimeSeries incoming/missed по теме через Call.fs_uuid → FsCdr.
+      operationId: getTopicsTimeSeriesV2
+      parameters:
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/dept'
+        - $ref: '#/components/parameters/channel'
+        - $ref: '#/components/parameters/queue'
+        - $ref: '#/components/parameters/q'
+        - in: query
+          name: topic
+          required: true
+          schema:
+            type: string
+          description: "`all` или uuid тематики (TicketSubject.id)."
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopicTimeSeriesResponse'
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+            
   /api/analytics/topics/top/v2:
     get:
       tags:
