@@ -60,7 +60,7 @@ paths:
     get:
       tags:
         - Analytics (cc_replica)
-      summary: KPI карточки (v2, CDR/FsCdr)
+      summary: Переход KPI контакт-центра на реальные данные телефонии (CDR/FsCdr)
       description: KPI по cc_replica."FsCdr" (inbound/missed/completed/AHT).
       operationId: getKpisV2
       parameters:
