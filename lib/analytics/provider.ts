@@ -1,6 +1,6 @@
 export type AnalyticsDataSource = "REAL_DB" | "MOCK";
 
-const DEFAULT_SOURCE: AnalyticsDataSource = "REAL_DB";
+const DEFAULT_SOURCE: AnalyticsDataSource = "MOCK";
 
 export function getAnalyticsDataSource(): AnalyticsDataSource {
   const envSource = process.env.ANALYTICS_DATA_SOURCE;

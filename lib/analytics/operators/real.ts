@@ -4,9 +4,9 @@ export type AnalyticsOperatorsParams = {
   period?: string;
   from?: string;
   to?: string;
-  dept?: string;
-  channel?: string;
-  queue?: string;
+  dept?: string;    // uuid
+  channel?: string; // uuid (опционально, через Call)
+  queue?: string;   // queue_code (string) или uuid queue_id — в UI сейчас чаще uuid, но в FsCdr queue_code
   topic?: string;
   q?: string;
   limit?: number;
@@ -39,23 +39,40 @@ function parseDateOrNull(v?: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function parseIntOrNull(v?: string): number | null {
-  if (!v) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+function periodToRange(period?: string): { from: Date; to: Date } | null {
+  if (!period) return null;
+  const now = new Date();
+  const to = now;
+  const from = new Date(now);
+
+  if (period === "today") from.setHours(0, 0, 0, 0);
+  else if (period === "yesterday") {
+    from.setDate(from.getDate() - 1);
+    from.setHours(0, 0, 0, 0);
+    to.setHours(0, 0, 0, 0);
+  } else if (period === "7d") from.setDate(from.getDate() - 7);
+  else if (period === "30d") from.setDate(from.getDate() - 30);
+  else return null;
+
+  return { from, to };
 }
 
 export async function getOperators(
   params: AnalyticsOperatorsParams,
 ): Promise<OperatorsResponse> {
-  const fromDate =
-    parseDateOrNull(params.from) ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const toDate = parseDateOrNull(params.to) ?? new Date();
+  const range = periodToRange(params.period);
 
-  const deptId = parseIntOrNull(params.dept);
-  const channelId = parseIntOrNull(params.channel);
-  const queueId = parseIntOrNull(params.queue);
-  const topicId = parseIntOrNull(params.topic);
+  const fromDate =
+    parseDateOrNull(params.from) ??
+    range?.from ??
+    new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  const toDate = parseDateOrNull(params.to) ?? range?.to ?? new Date();
+
+  const deptId = params.dept?.trim() || null;       // uuid
+  const channelId = params.channel?.trim() || null; // uuid
+  const queue = params.queue?.trim() || null;       // ASSUMPTION: для operators используем FsCdr.queue_code (string)
+  const q = params.q?.trim() || null;
 
   const limit =
     typeof params.limit === "number" && params.limit > 0 ? params.limit : 20;
@@ -63,119 +80,106 @@ export async function getOperators(
     typeof params.offset === "number" && params.offset >= 0 ? params.offset : 0;
 
   // ---- items (per operator) ----
-  const where: string[] = [`i.started_at >= $1`, `i.started_at < $2`];
-  const values: unknown[] = [fromDate.toISOString(), toDate.toISOString()];
-  let idx = values.length;
-
-  if (deptId !== null) {
-    idx += 1;
-    where.push(`i.department_id = $${idx}`);
-    values.push(deptId);
-  }
-  if (channelId !== null) {
-    idx += 1;
-    where.push(`i.channel_id = $${idx}`);
-    values.push(channelId);
-  }
-  if (queueId !== null) {
-    idx += 1;
-    where.push(`i.queue_id = $${idx}`);
-    values.push(queueId);
-  }
-  if (topicId !== null) {
-    idx += 1;
-    where.push(`i.topic_id = $${idx}`);
-    values.push(topicId);
-  }
-
-  idx += 1;
-  values.push(limit);
-  idx += 1;
-  values.push(offset);
-
   const itemsSql = `
-    SELECT
-      o.id AS "operatorId",
-      o.full_name AS "operatorNameRu",
-      COUNT(*) FILTER (WHERE i.status = 'resolved')::int AS handled,
-      COUNT(*) FILTER (WHERE i.status = 'unresolved' AND i.ended_at IS NULL)::int AS missed,
-      ROUND(AVG(i.duration_sec) FILTER (WHERE i.status = 'resolved' AND i.duration_sec > 0))::int AS "ahtSec",
-      ROUND(100.0 * AVG(CASE WHEN i.fcr THEN 1 ELSE 0 END), 2)::float AS "fcrPct"
-    FROM public.interactions i
-    JOIN public.operators o ON o.id = i.operator_id
-    WHERE ${where.join(" AND ")}
-    GROUP BY o.id, o.full_name
-    ORDER BY handled DESC, missed DESC, o.id ASC
-    LIMIT $${idx - 1} OFFSET $${idx}
+    with base as (
+      select
+        u.name as operator_name,
+        f.start_stamp,
+        f.answer_stamp,
+        f.billsec
+      from cc_replica."FsCdr" f
+      join cc_replica."Call" c on c.fs_uuid = f.id
+      join cc_replica."User" u on u.id = c.user_id
+      where f.start_stamp >= $1::timestamptz
+        and f.start_stamp <  $2::timestamptz
+        and f.direction = 'inbound'
+        and ($3::uuid is null or u.department_id = $3::uuid)
+        and ($4::uuid is null or c.channel_id = $4::uuid)
+        and ($5::text is null or f.queue_code = $5)
+        and ($6::text is null
+             or f.caller ilike '%' || $6 || '%'
+             or f.callee ilike '%' || $6 || '%'
+             or c."requestNum" ilike '%' || $6 || '%')
+    )
+    select
+      (dense_rank() over (order by operator_name))::int as operator_id,
+      operator_name,
+      count(*) filter (where answer_stamp is not null)::int as handled,
+      count(*) filter (where answer_stamp is null)::int as missed,
+      round(avg(billsec) filter (where answer_stamp is not null))::int as aht_sec
+    from base
+    group by operator_name
+    order by handled desc, missed desc, operator_name asc
+    limit $7 offset $8
   `;
 
+  const itemsParams = [
+    fromDate.toISOString(),
+    toDate.toISOString(),
+    deptId,
+    channelId,
+    queue,
+    q,
+    limit,
+    offset,
+  ];
+
   const { rows: itemRows } = await query<{
-    operatorId: number;
-    operatorNameRu: string;
+    operator_id: number;
+    operator_name: string;
     handled: number;
     missed: number;
-    ahtSec: number | null;
-    fcrPct: number | null;
-  }>(itemsSql, values);
+    aht_sec: number | null;
+  }>(itemsSql, itemsParams);
 
   const items: OperatorItem[] = itemRows.map((r) => ({
-    operatorId: Number(r.operatorId),
-    operatorNameRu: r.operatorNameRu,
+    operatorId: Number(r.operator_id),
+    operatorNameRu: r.operator_name,
     handled: Number(r.handled) || 0,
     missed: Number(r.missed) || 0,
-    ahtSec: r.ahtSec === null ? null : Number(r.ahtSec),
-    fcrPct: r.fcrPct === null ? null : Number(r.fcrPct),
+    ahtSec: r.aht_sec === null ? null : Number(r.aht_sec),
+    fcrPct: 0, // пока нет данных для FCR
   }));
 
   // ---- trend (overall, per hour) ----
-  // (минимально: AHT по часу; ASA пока null, т.к. нет очередных событий/ASA таблицы в контракте operators)
-  const trendWhere: string[] = [`i.started_at >= $1`, `i.started_at < $2`];
-  const trendValues: unknown[] = [fromDate.toISOString(), toDate.toISOString()];
-  let tIdx = trendValues.length;
-
-  if (deptId !== null) {
-    tIdx += 1;
-    trendWhere.push(`i.department_id = $${tIdx}`);
-    trendValues.push(deptId);
-  }
-  if (channelId !== null) {
-    tIdx += 1;
-    trendWhere.push(`i.channel_id = $${tIdx}`);
-    trendValues.push(channelId);
-  }
-  if (queueId !== null) {
-    tIdx += 1;
-    trendWhere.push(`i.queue_id = $${tIdx}`);
-    trendValues.push(queueId);
-  }
-  if (topicId !== null) {
-    tIdx += 1;
-    trendWhere.push(`i.topic_id = $${tIdx}`);
-    trendValues.push(topicId);
-  }
-
   const trendSql = `
-    SELECT
-      date_trunc('hour', i.started_at) AS bucket,
-      ROUND(AVG(i.duration_sec) FILTER (WHERE i.status = 'resolved' AND i.duration_sec > 0))::int AS "ahtSec"
-    FROM public.interactions i
-    WHERE ${trendWhere.join(" AND ")}
-    GROUP BY 1
-    ORDER BY 1 ASC
+    select
+      date_trunc('hour', f.start_stamp) as t,
+      round(avg(f.billsec) filter (where f.answer_stamp is not null))::int as aht_sec
+    from cc_replica."FsCdr" f
+    join cc_replica."Call" c on c.fs_uuid = f.id
+    join cc_replica."User" u on u.id = c.user_id
+    where f.start_stamp >= $1::timestamptz
+      and f.start_stamp <  $2::timestamptz
+      and f.direction = 'inbound'
+      and ($3::uuid is null or u.department_id = $3::uuid)
+      and ($4::uuid is null or c.channel_id = $4::uuid)
+      and ($5::text is null or f.queue_code = $5)
+      and ($6::text is null
+           or f.caller ilike '%' || $6 || '%'
+           or f.callee ilike '%' || $6 || '%'
+           or c."requestNum" ilike '%' || $6 || '%')
+    group by 1
+    order by 1 asc
   `;
 
-  const { rows: trendRows } = await query<{ bucket: string | Date; ahtSec: number | null }>(
-    trendSql,
-    trendValues,
-  );
+  const trendParams = [
+    fromDate.toISOString(),
+    toDate.toISOString(),
+    deptId,
+    channelId,
+    queue,
+    q,
+  ];
+
+  const { rows: trendRows } = await query<{
+    t: string | Date;
+    aht_sec: number | null;
+  }>(trendSql, trendParams);
 
   const trend: OperatorTrendPoint[] = trendRows.map((r) => {
-    const d = r.bucket instanceof Date ? r.bucket : new Date(r.bucket);
-    return {
-      t: d.toISOString(),
-      ahtSec: r.ahtSec === null ? null : Number(r.ahtSec),
-      asaSec: null, // нет данных ASA в текущей interactions схеме
-    };
+    const d = r.t instanceof Date ? r.t : new Date(r.t);
+    return { t: d.toISOString(), ahtSec: r.aht_sec === null ? null : Number(r.aht_sec), asaSec: null };
   });
 
   return { items, trend };

@@ -1,7 +1,9 @@
 "use client";
 
+
+
 import { CALLS_BY_PERIOD } from "@/mock/callsByPeriod";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,6 +46,9 @@ import {
   Clock,
   ListChecks,
 } from "lucide-react";
+
+const UI_DATA_SOURCE =
+  (process.env.NEXT_PUBLIC_UI_DATA_SOURCE as "MOCK" | "API") ?? "MOCK";
 
 type Period = "today" | "yesterday" | "7d" | "30d" | "custom";
 
@@ -127,6 +132,43 @@ const GOAL_COLORS: Record<string, string> = {
   "Требует действий": "#f59e0b", // на будущее
 };
 
+type ApiRecentItem = {
+  externalId: string;
+  startedAt: string;
+  channelCode: "voice" | "chat" | "email" | "sms" | "push";
+  channelNameRu: string;
+  queueCode: string;
+  queueNameRu: string;
+  departmentNameRu: string;
+  operatorNameRu: string | null;
+  topicNameRu: string | null;
+  durationSec: number;
+  statusCode: "completed" | "missed" | "waiting" | "in_progress";
+  statusRu: "Завершён" | "Пропущен" | "Ожидание" | "В разговоре";
+};
+
+function mapApiRecentToCallRow(r: ApiRecentItem): CallRow {
+  return {
+    id: `C-${r.externalId}`,
+    startedAt: new Date(r.startedAt).toISOString().slice(11, 16), // HH:MM
+    channel: r.channelCode,
+    queue:
+      r.queueCode === "1" ? "general" :
+      r.queueCode === "2" ? "vip" :
+      r.queueCode === "3" ? "antifraud" :
+      "general",
+    dept:
+      r.departmentNameRu === "Антифрод" ? "Антифрод" :
+      r.departmentNameRu === "Контроль качества" ? "Контроль качества" :
+      "Контакт-центр",
+    operator: r.operatorNameRu ?? "—",
+    topic: r.topicNameRu ?? "Не указано",
+    durationSec: r.durationSec ?? 0,
+    status: r.statusRu,
+    fcr: false,
+    resolution: "resolved",
+  };
+}
 
 export default function ContactCenterAnalyticsDashboard() {
   const [period, setPeriod] = useState<Period>("today");
@@ -140,6 +182,37 @@ export default function ContactCenterAnalyticsDashboard() {
   const [selectedQueue, setSelectedQueue] = useState<string>("all");
   const [channelTab, setChannelTab] = useState<Channel>("all");
 
+  
+
+  const [recentItems, setRecentItems] = useState<any[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    const controller = new AbortController();
+    setRecentLoading(true);
+
+    const url =
+      `/api/analytics/recent/v2?period=${encodeURIComponent(period)}` +
+      `&limit=20&offset=0` +
+      (channel !== "all" ? `&channel=${encodeURIComponent(channel)}` : "") +
+      (queue !== "all" ? `&queue=${encodeURIComponent(queue)}` : "") +
+      (dept !== "Все отделы" ? `&dept=${encodeURIComponent(dept)}` : "") +
+      (query ? `&q=${encodeURIComponent(query)}` : "");
+
+
+    fetch(url, { signal: controller.signal })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.items) setRecentItems(data.items);
+        else setRecentItems([]);
+      })
+      .catch(() => setRecentItems([]))
+      .finally(() => setRecentLoading(false));
+
+    return () => controller.abort();
+  }, [period, channel, queue, dept, query]);
 
   const calls: CallRow[] = useMemo(() => {
   const result: CallRow[] = [];
@@ -317,7 +390,13 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     return filteredCalls.filter((c) => c.channel === channelTab);
   }, [filteredCalls, channelTab]);
 
-  const latestCalls = useMemo(() => {
+    const latestCalls = useMemo(() => {
+    // === API mode: лента берётся из /api/analytics/recent ===
+    if (UI_DATA_SOURCE === "API") {
+      return recentItems.map(mapApiRecentToCallRow);
+    }
+
+    // === MOCK mode: как было ===
     if (tab === "queues" && selectedQueue !== "all") {
       return filteredCalls.filter((c) => c.queue === selectedQueue);
     }
@@ -325,7 +404,14 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
       return channelTabCalls.slice(0, 10);
     }
     return filteredCalls;
-  }, [filteredCalls, tab, selectedQueue, channelTabCalls]);
+  }, [
+    UI_DATA_SOURCE,
+    recentItems,
+    tab,
+    selectedQueue,
+    filteredCalls,
+    channelTabCalls,
+  ]);
 
   const topicOptions = useMemo(() => {
     const s = new Set<string>();

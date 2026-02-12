@@ -4,9 +4,9 @@ export type AnalyticsChannelsSplitParams = {
   period?: string;
   from?: string;
   to?: string;
-  dept?: string;
-  channel?: string;
-  queue?: string;
+  dept?: string;    // uuid
+  channel?: string; // uuid
+  queue?: string;   // uuid
   topic?: string;
   q?: string;
 };
@@ -39,172 +39,78 @@ function parseDateOrNull(v?: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function parseIntOrNull(v?: string): number | null {
-  if (!v) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
+function periodToRange(period?: string): { from: Date; to: Date } | null {
+  if (!period) return null;
+  const now = new Date();
+  const to = now;
+  const from = new Date(now);
 
-type ChannelSlot = "voice" | "chat" | "email" | "sms" | "push";
+  if (period === "today") from.setHours(0, 0, 0, 0);
+  else if (period === "yesterday") {
+    from.setDate(from.getDate() - 1);
+    from.setHours(0, 0, 0, 0);
+    to.setHours(0, 0, 0, 0);
+  } else if (period === "7d") from.setDate(from.getDate() - 7);
+  else if (period === "30d") from.setDate(from.getDate() - 30);
+  else return null;
 
-function mapChannelNameToSlot(name: string): ChannelSlot | null {
-  const n = name.toLowerCase();
-  if (n.includes("звон")) return "voice";
-  if (n.includes("чат")) return "chat";
-  if (n.includes("email") || n.includes("почт")) return "email";
-  if (n.includes("sms")) return "sms";
-  if (n.includes("push")) return "push";
-  return null;
+  return { from, to };
 }
 
 export async function getChannelsSplit(
   params: AnalyticsChannelsSplitParams,
 ): Promise<ChannelsSplitResponse> {
+  const range = periodToRange(params.period);
+
   const fromDate =
-    parseDateOrNull(params.from) ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const toDate = parseDateOrNull(params.to) ?? new Date();
+    parseDateOrNull(params.from) ??
+    range?.from ??
+    new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const deptId = parseIntOrNull(params.dept);
-  const channelId = parseIntOrNull(params.channel);
-  const queueId = parseIntOrNull(params.queue);
-  const topicId = parseIntOrNull(params.topic);
+  const toDate = parseDateOrNull(params.to) ?? range?.to ?? new Date();
 
-  // ---- split by channel ----
-  const where: string[] = [`i.started_at >= $1`, `i.started_at < $2`];
-  const values: unknown[] = [fromDate.toISOString(), toDate.toISOString()];
-  let idx = values.length;
-
-  if (deptId !== null) {
-    idx += 1;
-    where.push(`i.department_id = $${idx}`);
-    values.push(deptId);
-  }
-  if (channelId !== null) {
-    idx += 1;
-    where.push(`i.channel_id = $${idx}`);
-    values.push(channelId);
-  }
-  if (queueId !== null) {
-    idx += 1;
-    where.push(`i.queue_id = $${idx}`);
-    values.push(queueId);
-  }
-  if (topicId !== null) {
-    idx += 1;
-    where.push(`i.topic_id = $${idx}`);
-    values.push(topicId);
-  }
+  const deptId = params.dept?.trim() || null;       // uuid
+  const channelId = params.channel?.trim() || null; // uuid
+  const queueId = params.queue?.trim() || null;     // uuid
+  const q = params.q?.trim() || null;
 
   const splitSql = `
-    SELECT
-      c.name AS "channelNameRu",
-      c.name AS "channelCode",
-      COUNT(*)::int AS "incoming",
-      ROUND(AVG(i.response_time_sec))::int AS "responseSec"
-    FROM public.interactions i
-    JOIN public.channels c ON c.id = i.channel_id
-    WHERE ${where.join(" AND ")}
-    GROUP BY c.name
-    ORDER BY COUNT(*) DESC, c.name ASC
+    select
+      ch.code as channel_code,
+      coalesce(ch.name, ch.code) as channel_name,
+      count(*) filter (where c."callDirection" = 'incoming')::int as incoming,
+      count(*) filter (where c."callDirection" = 'outgoing')::int as outgoing
+    from cc_replica."Call" c
+    left join cc_replica."Channel" ch on ch.id = c.channel_id
+    left join cc_replica."User" u on u.id = c.user_id
+    where c."createdOn" >= $1::timestamp
+      and c."createdOn" <  $2::timestamp
+      and ($3::uuid is null or u.department_id = $3::uuid)
+      and ($4::uuid is null or c.channel_id = $4::uuid)
+      and ($5::uuid is null or c.queue_id = $5::uuid)
+      and ($6::text is null or c."requestNum" ilike '%' || $6 || '%')
+    group by ch.code, ch.name
+    order by incoming desc
   `;
 
-  const { rows: splitRows } = await query<{
-    channelNameRu: string;
-    channelCode: string;
+  const { rows } = await query<{
+    channel_code: string | null;
+    channel_name: string | null;
     incoming: number;
-    responseSec: number | null;
-  }>(splitSql, values);
+    outgoing: number;
+  }>(splitSql, [fromDate.toISOString(), toDate.toISOString(), deptId, channelId, queueId, q]);
 
-  const split: ChannelsSplitItem[] = splitRows.map((r) => ({
-    channelCode: r.channelCode,
-    channelNameRu: r.channelNameRu,
+  const split: ChannelsSplitItem[] = rows.map((r) => ({
+    channelCode: r.channel_code ?? "voice",
+    channelNameRu: r.channel_name ?? "Звонки",
     incoming: Number(r.incoming) || 0,
-    outgoing: null, // direction нет в текущей interactions схеме
-    responseSec: r.responseSec === null ? null : Number(r.responseSec),
+    outgoing: Number(r.outgoing) || 0,
+    responseSec: null, // нет событий "первого ответа" в текущей модели
   }));
 
-  // ---- response trend (multi-channel): per-hour avg response_time_sec by channel ----
-  // Load channels once, build mapping channel_id -> slot
-  const { rows: chanRows } = await query<{ id: number; name: string }>(
-    `SELECT id, name FROM public.channels ORDER BY id ASC`,
-  );
-
-  const channelSlotById = new Map<number, ChannelSlot>();
-  for (const c of chanRows) {
-    const slot = mapChannelNameToSlot(c.name);
-    if (slot) channelSlotById.set(Number(c.id), slot);
-  }
-
-  let responseTrend: ChannelResponseTrendPoint[] = [];
-  if (channelSlotById.size > 0) {
-    const w3: string[] = [`i.started_at >= $1`, `i.started_at < $2`];
-    const v3: unknown[] = [fromDate.toISOString(), toDate.toISOString()];
-    let k = v3.length;
-
-    if (deptId !== null) {
-      k += 1;
-      w3.push(`i.department_id = $${k}`);
-      v3.push(deptId);
-    }
-    if (queueId !== null) {
-      k += 1;
-      w3.push(`i.queue_id = $${k}`);
-      v3.push(queueId);
-    }
-    if (topicId !== null) {
-      k += 1;
-      w3.push(`i.topic_id = $${k}`);
-      v3.push(topicId);
-    }
-    // If channel filter provided, trend will only include that channel (still mapped to slot)
-    if (channelId !== null) {
-      k += 1;
-      w3.push(`i.channel_id = $${k}`);
-      v3.push(channelId);
-    }
-
-    const trendSql = `
-      SELECT
-        date_trunc('hour', i.started_at) AS bucket,
-        i.channel_id AS channel_id,
-        ROUND(AVG(i.response_time_sec))::int AS v
-      FROM public.interactions i
-      WHERE ${w3.join(" AND ")}
-      GROUP BY 1, 2
-      ORDER BY 1 ASC
-    `;
-
-    const { rows: trendRows } = await query<{
-      bucket: string | Date;
-      channel_id: number;
-      v: number | null;
-    }>(trendSql, v3);
-
-    const byT = new Map<string, ChannelResponseTrendPoint>();
-
-    for (const r of trendRows) {
-      const d = r.bucket instanceof Date ? r.bucket : new Date(r.bucket);
-      const t = d.toISOString();
-
-      let p = byT.get(t);
-      if (!p) {
-        p = { t };
-        byT.set(t, p);
-      }
-
-      const slot = channelSlotById.get(Number(r.channel_id));
-      if (!slot) continue;
-
-      const val = r.v === null ? null : Number(r.v);
-      if (slot === "voice") p.voice = val;
-      else if (slot === "chat") p.chat = val;
-      else if (slot === "email") p.email = val;
-      else if (slot === "sms") p.sms = val;
-      else if (slot === "push") p.push = val;
-    }
-
-    responseTrend = Array.from(byT.values()).sort((a, b) => a.t.localeCompare(b.t));
-  }
+  // В текущей модели cc_replica нет response_time_sec по каналам.
+  // Поэтому пока возвращаем пустой тренд (как в твоём v2).
+  const responseTrend: ChannelResponseTrendPoint[] = [];
 
   return { split, responseTrend };
 }
