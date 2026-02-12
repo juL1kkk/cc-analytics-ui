@@ -390,6 +390,38 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/DictionaryTopic'
+  /api/analytics/recent/v2:
+    get:
+      tags:
+        - Analytics (cc_replica)
+      summary: Последние коммуникации (v2, cc_replica)
+      description: Лента обращений из cc_replica."Call" с JOIN на справочники.
+      operationId: getRecentV2
+      parameters:
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/dept'
+        - $ref: '#/components/parameters/channel'
+        - $ref: '#/components/parameters/queue'
+        - $ref: '#/components/parameters/topic'
+        - $ref: '#/components/parameters/q'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Список обращений, отсортированных по startedAt desc
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecentResponse'
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 
   /api/analytics/sentiment/v2:
     get:
