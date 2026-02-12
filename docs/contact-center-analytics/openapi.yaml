@@ -56,6 +56,33 @@ paths:
                     items:
                       $ref: '#/components/schemas/DictionaryChannel'
 
+  /api/analytics/channels/split/v2:
+    get:
+      tags:
+        - Analytics (cc_replica)
+      summary: Каналы — распределение (v2, cc_replica)
+      description: Split по каналам из cc_replica."Call" + cc_replica."Channel".
+      operationId: getChannelsSplitV2
+      parameters:
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/dept'
+        - $ref: '#/components/parameters/queue'
+        - $ref: '#/components/parameters/q'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelsSplitResponse'
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/analytics/timeseries/v2:
     get:
