@@ -18,6 +18,23 @@ tags:
     description: Агрегаты для графиков и таблиц UI
 
 paths:
+  /api/dictionaries/queues/v2:
+    get:
+      tags: 
+      - Dictionaries (cc_replica)
+      summary: Справочник очередей (v2, cc_replica)
+      responses:
+        '200':
+          description: Список очередей
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DictionaryChannel'
   
   /api/dictionaries/channels/v2:
     get:
