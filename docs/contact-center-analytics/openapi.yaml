@@ -55,8 +55,41 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/DictionaryChannel'
+                      
+  /api/analytics/kpis/v2:
+    get:
+      tags:
+        - Analytics (cc_replica)
+      summary: KPI карточки (v2, CDR/FsCdr)
+      description: KPI по cc_replica."FsCdr" (inbound/missed/completed/AHT).
+      operationId: getKpisV2
+      parameters:
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/queue'
+        - $ref: '#/components/parameters/debug'
+      responses:
+        '200':
+          description: KPI
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [incoming, missed, completed, ahtSec, total]
+                properties:
+                  incoming: { type: integer }
+                  missed: { type: integer }
+                  completed: { type: integer }
+                  ahtSec: { type: integer }
+                  total: { type: integer }
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  
   /api/dictionaries/departments/v2:
     get:
       tags:
