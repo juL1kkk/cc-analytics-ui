@@ -16,6 +16,8 @@ tags:
     description: Чтение справочников
   - name: Analytics
     description: Агрегаты для графиков и таблиц UI
+  - name: Analytics (cc_replica)
+    description: Аналитика поверх схемы cc_replica  
 
 paths:
   /api/dictionaries/queues/v2:
@@ -389,6 +391,27 @@ paths:
                     items:
                       $ref: '#/components/schemas/DictionaryTopic'
 
+  /api/analytics/sentiment/v2:
+    get:
+      tags: 
+      - Analytics (cc_replica)
+      summary: Эмоциональный фон (v2, cc_replica)
+      description: Аналитика поверх схемы cc_replica  
+      operationId: getSentimentV2
+      responses:
+        '200':
+          description: Donut-распределение эмоционального фона
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SentimentResponse'
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+ 
   /api/analytics/kpis:
     get:
       tags: [Analytics]
