@@ -149,6 +149,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/analytics/queues/v2:
+    get:
+      tags:
+        - Analytics (cc_replica)
+      summary: Очереди (v2, cc_replica + FsCdr)
+      description: Totals по cc_replica."Call" + abandonedPct по cc_replica."FsCdr". waiting/avgWaitSec/slaPct требуют queue_state_events.
+      operationId: getQueuesV2
+      parameters:
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/dept'
+        - $ref: '#/components/parameters/queue'
+        - $ref: '#/components/parameters/q'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuesResponse'
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              
+
   /api/dictionaries/departments/v2:
     get:
       tags:
