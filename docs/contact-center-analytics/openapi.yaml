@@ -176,6 +176,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               
+  /api/analytics/topics/top/v2:
+    get:
+      tags:
+        - Analytics (cc_replica)
+      summary: Топ тематик (v2, cc_replica)
+      description: Топ тематик по Call + TicketSubject/TicketSubjectOut. channelSplit по Channel. sentimentSplit/goalSplit = null.
+      operationId: getTopicsTopV2
+      parameters:
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/dept'
+        - $ref: '#/components/parameters/channel'
+        - $ref: '#/components/parameters/queue'
+        - $ref: '#/components/parameters/q'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopicsTopResponse'
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/analytics/queues/v2:
     get:
