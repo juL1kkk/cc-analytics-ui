@@ -1,10 +1,12 @@
 "use client";
 
+
+
 import {
   fetchOperatorsV2,
   type OperatorRowV2,
 } from "@/lib/analytics/operators.client";
-import { fetchChannelsSplitV2 } from "@/lib/analytics/channelsSplit.client";
+import { fetchChannelsSplitV2 } from "@/lib/analytics/channels-split.client";
 import { fetchKpisV2, type KpisV2Response } from "@/lib/analytics/kpis.client";
 import {
   fetchTimeseriesV2,
