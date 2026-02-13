@@ -49,22 +49,45 @@ export async function GET(request: Request) {
     const q = url.searchParams.get("q")?.trim() || null;
 
     const sql = `
-      select
-        ch.code as channel_code,
-        coalesce(ch.name, ch.code) as channel_name,
-        count(*) filter (where c."callDirection" = 'incoming')::int as incoming,
-        count(*) filter (where c."callDirection" = 'outgoing')::int as outgoing
-      from cc_replica."Call" c
-      left join cc_replica."Channel" ch on ch.id = c.channel_id
-      left join cc_replica."User" u on u.id = c.user_id
-      where c."createdOn" >= $1::timestamp
-        and c."createdOn" <  $2::timestamp
-        and ($3::uuid is null or u.department_id = $3::uuid)
-        and ($4::uuid is null or c.queue_id = $4::uuid)
-        and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
-      group by ch.code, ch.name
-      order by incoming desc
-    `;
+  with
+  call_split as (
+    select
+      ch.code as channel_code,
+      coalesce(ch.name, ch.code) as channel_name,
+      count(*) filter (where c."callDirection" = 'incoming')::int as incoming,
+      count(*) filter (where c."callDirection" = 'outgoing')::int as outgoing
+    from cc_replica."Call" c
+    left join cc_replica."Channel" ch on ch.id = c.channel_id
+    left join cc_replica."User" u on u.id = c.user_id
+    where c."createdOn" >= $1::timestamp
+      and c."createdOn" <  $2::timestamp
+      and ($3::uuid is null or u.department_id = $3::uuid)
+      and ($4::uuid is null or c.queue_id = $4::uuid)
+      and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
+      and coalesce(ch.code, 'voice') <> 'voice'          -- IMPORTANT: исключаем voice из Call
+    group by ch.code, ch.name
+  ),
+  voice_split as (
+    select
+      'voice'::text as channel_code,
+      'Звонки'::text as channel_name,
+      count(*) filter (where f.direction = 'inbound')::int as incoming,
+      count(*) filter (where f.direction = 'outbound')::int as outgoing
+    from cc_replica."FsCdr" f
+    left join cc_replica."Call" c on c.fs_uuid = f.id    -- чтобы применить dept/queue/q через Call
+    left join cc_replica."User" u on u.id = c.user_id
+    where f.start_stamp >= $1::timestamp
+      and f.start_stamp <  $2::timestamp
+      and ($3::uuid is null or u.department_id = $3::uuid)
+      and ($4::uuid is null or c.queue_id = $4::uuid)
+      and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
+  )
+  select * from call_split
+  union all
+  select * from voice_split
+  order by incoming desc
+`;
+
 
     const params = [from, to, dept, queue, q];
     const { rows } = await query<Row>(sql, params);

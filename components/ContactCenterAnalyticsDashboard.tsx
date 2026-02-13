@@ -1,5 +1,7 @@
 "use client";
 
+import { fetchOperatorsV2 } from "@/lib/analytics/operators.client";
+import { fetchChannelsSplitV2 } from "@/lib/analytics/channelsSplit.client";
 import { fetchKpisV2, type KpisV2Response } from "@/lib/analytics/kpis.client";
 import {
   fetchTimeseriesV2,
@@ -193,6 +195,16 @@ export default function ContactCenterAnalyticsDashboard() {
   const [recentItems, setRecentItems] = useState<any[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
   const [apiKpis, setApiKpis] = useState<KpisV2Response | null>(null);
+
+  const [apiChannelSplit, setApiChannelSplit] = useState<
+  {
+    channelCode: string;
+    channelNameRu: string;
+    incoming: number;
+    outgoing: number;
+    responseSec: number | null;
+  }[] | null
+ >(null);
 
   const [apiTimeSeries, setApiTimeSeries] = useState<TimeseriesPointV2[] | null>(null);
 
@@ -1062,6 +1074,28 @@ const goalSplit = useMemo(() => {
     },
     [queueCalls]
   );
+
+  useEffect(() => {
+  if (UI_DATA_SOURCE !== "API") return;
+
+  let alive = true;
+
+  (async () => {
+    try {
+      const res = await fetchChannelsSplitV2({ period });
+      if (!alive) return;
+      setApiChannelSplit(res.split ?? []);
+    } catch (e) {
+      if (!alive) return;
+      console.warn("[UI] channels/split/v2 failed", e);
+      setApiChannelSplit(null);
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+  }, [UI_DATA_SOURCE, period]);
 
   const channelVolumes = useMemo(() => {
   const map = new Map<
