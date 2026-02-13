@@ -8,6 +8,7 @@ import {
 } from "@/lib/analytics/operators.client";
 import { fetchChannelsSplitV2 } from "@/lib/analytics/channelsSplit.client";
 import { fetchKpisV2, type KpisV2Response } from "@/lib/analytics/kpis.client";
+import { fetchTopicsTopV2 } from "@/lib/analytics/topicsTop.client";
 import {
   fetchTimeseriesV2,
   type TimeseriesPointV2,
@@ -213,6 +214,9 @@ export default function ContactCenterAnalyticsDashboard() {
  >(null);
 
   const [apiTimeSeries, setApiTimeSeries] = useState<TimeseriesPointV2[] | null>(null);
+  const [apiTopicsTop, setApiTopicsTop] = useState<
+    Array<{ name: string; count: number; avgHandleSec: number; fcrPct: number }> | null
+  >(null);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -245,6 +249,32 @@ export default function ContactCenterAnalyticsDashboard() {
       controller.abort();
     };
   }, [period, dept, channel, queue, selectedOperator, topic, query]);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetchTopicsTopV2({ period });
+        if (!alive) return;
+        setApiTopicsTop(
+          (res.topTopics ?? []).map((t) => ({
+            name: t.topicNameRu,
+            count: t.count,
+            avgHandleSec: t.avgHandleSec,
+            fcrPct: t.fcrPct,
+          }))
+        );
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] topics/top/v2 failed", e);
+        setApiTopicsTop(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [UI_DATA_SOURCE, period]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -927,6 +957,8 @@ const goalSplit = useMemo(() => {
     }))
     .sort((a, b) => b.count - a.count);
 }, [filteredCalls]);
+
+  const themesView = UI_DATA_SOURCE === "API" && apiTopicsTop ? apiTopicsTop : themes;
   const topicSplit = useMemo(() => {
   const m = new Map<string, number>();
 
@@ -2048,7 +2080,7 @@ const goalSplit = useMemo(() => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      {themes.map((t) => (
+                      {themesView.map((t) => (
                         <div key={t.name} className="rounded-2xl border bg-background p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
