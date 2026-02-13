@@ -21,8 +21,23 @@ function toQuery(params: Record<string, unknown>) {
   return qs.toString();
 }
 
+export type FetchOperatorsV2Params = {
+  period?: string;
+  from?: string;
+  to?: string;
+  dept?: string;
+  channel?: string;
+  queue?: string;
+  topic?: string;
+  operator?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+  debug?: string | boolean;
+};
+
 export async function fetchOperatorsV2(
-  filters: Record<string, unknown>
+  filters: FetchOperatorsV2Params
 ): Promise<OperatorsResponseV2> {
   const q = toQuery(filters);
   const res = await fetch(`/api/analytics/operators/v2${q ? `?${q}` : ""}`, {

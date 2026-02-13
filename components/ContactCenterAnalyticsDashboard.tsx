@@ -4,7 +4,7 @@
 
 import {
   fetchOperatorsV2,
-  type OperatorRowV2,
+  type OperatorsResponseV2,
 } from "@/lib/analytics/operators.client";
 import { fetchChannelsSplitV2 } from "@/lib/analytics/channelsSplit.client";
 import { fetchKpisV2, type KpisV2Response } from "@/lib/analytics/kpis.client";
@@ -194,6 +194,23 @@ function mapTopicsTsToUi(apiResp: TopicsTimeseriesResponseV2) {
   });
 }
 
+function mapOperatorsToUi(apiResp: OperatorsResponseV2) {
+  return {
+    items: (apiResp.items ?? []).map((row) => ({
+      name: row.operatorNameRu,
+      handled: row.handled,
+      missed: row.missed,
+      ahtMin: row.handled ? +(row.ahtSec / 60).toFixed(1) : 0,
+      fcr: row.fcrPct,
+    })),
+    trend: (apiResp.trend ?? []).map((p) => ({
+      t: new Date(p.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      aht: p.ahtSec ?? 0,
+      asa: p.asaSec ?? 0,
+    })),
+  };
+}
+
 export default function ContactCenterAnalyticsDashboard() {
   const [period, setPeriod] = useState<Period>("today");
   const [channel, setChannel] = useState<Channel>("all");
@@ -210,7 +227,7 @@ export default function ContactCenterAnalyticsDashboard() {
 
   const [apiRecent, setApiRecent] = useState<RecentV2Response | null>(null);
   const [apiKpis, setApiKpis] = useState<KpisV2Response | null>(null);
-  const [apiOperators, setApiOperators] = useState<OperatorRowV2[] | null>(null);
+  const [apiOperators, setApiOperators] = useState<OperatorsResponseV2 | null>(null);
 
   const [apiChannelSplit, setApiChannelSplit] = useState<
   {
@@ -322,9 +339,19 @@ export default function ContactCenterAnalyticsDashboard() {
     let alive = true;
     (async () => {
       try {
-        const res = await fetchOperatorsV2({ period });
+        const res = await fetchOperatorsV2({
+          period,
+          ...(dept !== "Все отделы" ? { dept } : {}),
+          ...(channel !== "all" ? { channel } : {}),
+          ...(queue !== "all" ? { queue } : {}),
+          ...(topic !== "all" ? { topic } : {}),
+          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
+          ...(query ? { q: query } : {}),
+          limit: 20,
+          offset: 0,
+        });
         if (!alive) return;
-        setApiOperators(res.items ?? []);
+        setApiOperators(res);
       } catch (e) {
         if (!alive) return;
         console.warn("[UI] operators/v2 failed", e);
@@ -334,7 +361,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [UI_DATA_SOURCE, period]);
+  }, [UI_DATA_SOURCE, period, dept, channel, queue, topic, selectedOperator, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -403,8 +430,8 @@ export default function ContactCenterAnalyticsDashboard() {
 
   const hours = ["09", "10", "11", "12", "13", "14", "15", "16", "17"];
   const operators =
-    UI_DATA_SOURCE === "API" && apiOperators?.length
-      ? apiOperators.map((o) => o.operatorNameRu)
+    UI_DATA_SOURCE === "API" && apiOperators?.items?.length
+      ? apiOperators.items.map((o) => o.operatorNameRu)
       : ["Иван Петров", "Анна Соколова", "Алексей Козлов", "Мария Орлова"];
   const topics = ["Авторизация ЛК", "Сброс пароля", "Консультация", "Ошибки в приложении"];
 
@@ -529,6 +556,13 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
 
   return result;
 }, [UI_DATA_SOURCE, apiOperators, period]);
+
+  const operatorsView = useMemo(() => {
+    if (UI_DATA_SOURCE === "API" && apiOperators != null) {
+      return mapOperatorsToUi(apiOperators);
+    }
+    return null;
+  }, [UI_DATA_SOURCE, apiOperators]);
 
   const filteredCalls = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -1025,6 +1059,10 @@ const goalSplit = useMemo(() => {
 
   // Доп. данные для вкладок (мок)
   const operatorStats = useMemo(() => {
+  if (operatorsView) {
+    return operatorsView.items;
+  }
+
   const map = new Map<
     string,
     { handled: number; missed: number; sumSec: number; completed: number }
@@ -1065,10 +1103,14 @@ const goalSplit = useMemo(() => {
       ? Math.round((v.completed / (v.handled + v.missed)) * 100)
       : 0,
   }));
-}, [filteredCalls]);
+}, [filteredCalls, operatorsView]);
 
 
   const operatorAhtTrend = useMemo(() => {
+  if (operatorsView) {
+    return operatorsView.trend;
+  }
+
   const map = new Map<
     string,
     { t: string; ahtSum: number; cnt: number; asaSum: number }
@@ -1106,7 +1148,7 @@ const goalSplit = useMemo(() => {
       aht: x.cnt ? Math.round(x.ahtSum / x.cnt) : 0,
       asa: x.cnt ? Math.round(x.asaSum / x.cnt) : 0,
     }));
-}, [operatorFilteredCalls]);
+}, [operatorFilteredCalls, operatorsView]);
 
 
   const queueStats = useMemo(() => {
