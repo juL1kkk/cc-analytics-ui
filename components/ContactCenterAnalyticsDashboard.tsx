@@ -1,6 +1,6 @@
 "use client";
 
-
+import { fetchKpisV2 } from "@/lib/analytics/kpis.client";
 import { getUiSource } from "@/lib/uiSource";
 import { CALLS_BY_PERIOD } from "@/mock/callsByPeriod";
 import React, { useEffect, useMemo, useState } from "react";
@@ -189,8 +189,31 @@ export default function ContactCenterAnalyticsDashboard() {
   const [recentItems, setRecentItems] = useState<any[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
 
+ 
   useEffect(() => {
-    if (UI_DATA_SOURCE !== "API") return;
+  if (UI_DATA_SOURCE !== "API") return;
+
+  let alive = true;
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const data = await fetchKpisV2({ period });
+      if (!alive) return;
+      setApiKpis(data);
+    } catch (e) {
+      if (!alive) return;
+      console.warn("[UI] kpis/v2 failed", e);
+      setApiKpis(null);
+    }
+  })();
+
+  return () => {
+    alive = false;
+    controller.abort();
+  };
+}, [UI_DATA_SOURCE, period]);
+
 
     const controller = new AbortController();
     setRecentLoading(true);
@@ -548,8 +571,18 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
   });
 }, [filteredCalls, topic]);
 
+const [apiKpis, setApiKpis] = useState<{
+  incoming: number;
+  missed: number;
+  completed: number;
+  ahtSec: number;
+  total: number;
+} | null>(null);
 
 const kpis = useMemo(() => {
+  if (UI_DATA_SOURCE === "API" && apiKpis) {
+    return apiKpis;
+  }
   const incoming = filteredCalls.length;
   const missed = filteredCalls.filter((c) => c.status === "Пропущен").length;
 
