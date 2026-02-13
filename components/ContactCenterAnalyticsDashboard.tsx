@@ -1,7 +1,10 @@
 "use client";
 
-import { fetchTimeseriesV2 } from "@/lib/analytics/timeseries.client";
-import { fetchKpisV2 } from "@/lib/analytics/kpis.client";
+import { fetchKpisV2, type KpisV2Response } from "@/lib/analytics/kpis.client";
+import {
+  fetchTimeseriesV2,
+  type TimeseriesPointV2,
+} from "@/lib/analytics/timeseries/client";
 import { getUiSource } from "@/lib/uiSource";
 import { CALLS_BY_PERIOD } from "@/mock/callsByPeriod";
 import React, { useEffect, useMemo, useState } from "react";
@@ -189,17 +192,9 @@ export default function ContactCenterAnalyticsDashboard() {
 
   const [recentItems, setRecentItems] = useState<any[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
-  const [apiKpis, setApiKpis] = useState<{
-    incoming: number;
-    missed: number;
-    completed: number;
-    ahtSec: number;
-    total: number;
-  } | null>(null);
+  const [apiKpis, setApiKpis] = useState<KpisV2Response | null>(null);
 
-  const [apiTimeSeries, setApiTimeSeries] = useState<
-   { t: string; incoming: number; missed: number; ahtSec?: number }[] | null
-  >(null);
+  const [apiTimeSeries, setApiTimeSeries] = useState<TimeseriesPointV2[] | null>(null);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -230,6 +225,36 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
       controller.abort();
+    };
+  }, [period, dept, channel, queue, selectedOperator, topic, query]);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const data = await fetchTimeseriesV2({
+          period,
+          ...(dept !== "Все отделы" ? { dept } : {}),
+          ...(channel !== "all" ? { channel } : {}),
+          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
+          ...(topic !== "all" ? { topic } : {}),
+          ...(query ? { q: query } : {}),
+        });
+        if (!alive) return;
+        setApiTimeSeries(data.items ?? []);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] timeseries/v2 failed", e);
+        setApiTimeSeries(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
     };
   }, [period, dept, channel, queue, selectedOperator, topic, query]);
 
@@ -590,7 +615,7 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
   });
 }, [filteredCalls, topic]);
 
-const kpiStats = useMemo(() => {
+const kpis = useMemo(() => {
   if (UI_DATA_SOURCE === "API" && apiKpis) {
     return apiKpis;
   }
@@ -620,33 +645,33 @@ const kpiStats = useMemo(() => {
   };
 }, [filteredCalls, apiKpis]);
 
-const kpis = useMemo(() => {
+const kpiCards = useMemo(() => {
   const operatorsOnCalls = new Set(
     filteredCalls.map((c) => c.operator)
   ).size;
 
-  const fcrPct = kpiStats.incoming
-    ? Math.round((kpiStats.completed / kpiStats.incoming) * 100)
+  const fcrPct = kpis.incoming
+    ? Math.round((kpis.completed / kpis.incoming) * 100)
     : 0;
 
   return [
     {
       title: "Входящие",
-      value: kpiStats.incoming.toLocaleString("ru-RU"),
+      value: kpis.incoming.toLocaleString("ru-RU"),
       icon: PhoneCall,
       note: "за период",
       delta: 0,
     },
     {
       title: "Пропущенные",
-      value: kpiStats.missed.toLocaleString("ru-RU"),
+      value: kpis.missed.toLocaleString("ru-RU"),
       icon: Bell,
       note: "требуют реакции",
       delta: 0,
     },
     {
       title: "Средняя длительность",
-      value: kpiStats.ahtSec ? formatSec(kpiStats.ahtSec) : "—",
+      value: kpis.ahtSec ? formatSec(kpis.ahtSec) : "—",
       icon: Clock,
       note: "AHT",
       delta: 0,
@@ -666,11 +691,20 @@ const kpis = useMemo(() => {
       delta: 0,
     },
   ];
-}, [filteredCalls, kpiStats]);
+}, [filteredCalls, kpis]);
 
 
 
   const timeSeries = useMemo(() => {
+  if (UI_DATA_SOURCE === "API" && apiTimeSeries) {
+    return apiTimeSeries.map((p) => ({
+      t: new Date(p.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      incoming: p.incoming,
+      missed: p.missed,
+      aht: p.ahtSec ?? 0,
+    }));
+  }
+
   // фиксируем “витрину” часов, чтобы график не схлопывался в точку
   
   const hours = ["09", "10", "11", "12", "13", "14", "15"];
@@ -720,7 +754,7 @@ const kpis = useMemo(() => {
       aht: x.ahtCnt ? Math.round(x.ahtSum / x.ahtCnt) : 0,
     };
   });
-}, [filteredCalls]);
+}, [filteredCalls, apiTimeSeries]);
 
 
 const operatorLoad = useMemo(() => {
@@ -1272,7 +1306,7 @@ const goalSplit = useMemo(() => {
         {/* KPI */}
         <section className="lg:col-span-12">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {kpis.map((k) => {
+            {kpiCards.map((k) => {
               const Icon = k.icon;
               const isPositive = k.delta >= 0;
               return (
