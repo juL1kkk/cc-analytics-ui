@@ -1,6 +1,9 @@
 "use client";
 
-import { fetchOperatorsV2 } from "@/lib/analytics/operators.client";
+import {
+  fetchOperatorsV2,
+  type OperatorRowV2,
+} from "@/lib/analytics/operators.client";
 import { fetchChannelsSplitV2 } from "@/lib/analytics/channelsSplit.client";
 import { fetchKpisV2, type KpisV2Response } from "@/lib/analytics/kpis.client";
 import {
@@ -195,6 +198,7 @@ export default function ContactCenterAnalyticsDashboard() {
   const [recentItems, setRecentItems] = useState<any[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
   const [apiKpis, setApiKpis] = useState<KpisV2Response | null>(null);
+  const [apiOperators, setApiOperators] = useState<OperatorRowV2[] | null>(null);
 
   const [apiChannelSplit, setApiChannelSplit] = useState<
   {
@@ -239,6 +243,25 @@ export default function ContactCenterAnalyticsDashboard() {
       controller.abort();
     };
   }, [period, dept, channel, queue, selectedOperator, topic, query]);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetchOperatorsV2({ period });
+        if (!alive) return;
+        setApiOperators(res.items ?? []);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] operators/v2 failed", e);
+        setApiOperators(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [UI_DATA_SOURCE, period]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -299,7 +322,10 @@ export default function ContactCenterAnalyticsDashboard() {
   const result: CallRow[] = [];
 
   const hours = ["09", "10", "11", "12", "13", "14", "15", "16", "17"];
-  const operators = ["Иван Петров", "Анна Соколова", "Алексей Козлов", "Мария Орлова"];
+  const operators =
+    UI_DATA_SOURCE === "API" && apiOperators?.length
+      ? apiOperators.map((o) => o.operatorNameRu)
+      : ["Иван Петров", "Анна Соколова", "Алексей Козлов", "Мария Орлова"];
   const topics = ["Авторизация ЛК", "Сброс пароля", "Консультация", "Ошибки в приложении"];
 
   const queues: CallRow["queue"][] = ["general", "vip", "antifraud"];
@@ -422,7 +448,7 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
   }
 
   return result;
-}, [period]);
+}, [UI_DATA_SOURCE, apiOperators, period]);
 
   const filteredCalls = useMemo(() => {
     const q = query.trim().toLowerCase();
