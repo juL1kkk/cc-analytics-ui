@@ -1,7 +1,7 @@
 "use client";
 
 
-
+import { getUiSource } from "@/lib/uiSource";
 import { CALLS_BY_PERIOD } from "@/mock/callsByPeriod";
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -47,8 +47,10 @@ import {
   ListChecks,
 } from "lucide-react";
 
-const UI_DATA_SOURCE =
-  (process.env.NEXT_PUBLIC_UI_DATA_SOURCE as "MOCK" | "API") ?? "MOCK";
+const envDefault =
+  (process.env.NEXT_PUBLIC_UI_DATA_SOURCE as "MOCK" | "API" | undefined) ?? "MOCK";
+
+const UI_DATA_SOURCE = getUiSource() ?? envDefault;
 
 type Period = "today" | "yesterday" | "7d" | "30d" | "custom";
 
