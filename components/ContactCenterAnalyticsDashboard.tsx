@@ -5,6 +5,10 @@ import {
   fetchTimeseriesV2,
   type TimeseriesPointV2,
 } from "@/lib/analytics/timeseries/client";
+import {
+  fetchChannelsSplitV2,
+  type ChannelsSplitV2Item,
+} from "@/lib/analytics/channelsSplit.client";
 import { getUiSource } from "@/lib/uiSource";
 import { CALLS_BY_PERIOD } from "@/mock/callsByPeriod";
 import React, { useEffect, useMemo, useState } from "react";
@@ -93,6 +97,16 @@ const CHANNEL_TAB_LABELS: Record<Channel, string> = {
   sms: "SMS",
   push: "Push",
 };
+
+function normalizeChannel(code: string): Exclude<Channel, "all"> {
+  const value = String(code).toLowerCase();
+
+  if (value === "voice" || value === "call" || value === "phone") return "voice";
+  if (value === "chat") return "chat";
+  if (value === "email" || value === "mail") return "email";
+  if (value === "sms" || value === "text") return "sms";
+  return "push";
+}
 
 function mockResponseSec(channel: CallRow["channel"]) {
   return channel === "voice"
@@ -195,6 +209,7 @@ export default function ContactCenterAnalyticsDashboard() {
   const [apiKpis, setApiKpis] = useState<KpisV2Response | null>(null);
 
   const [apiTimeSeries, setApiTimeSeries] = useState<TimeseriesPointV2[] | null>(null);
+  const [apiChannelSplit, setApiChannelSplit] = useState<ChannelsSplitV2Item[] | null>(null);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -225,6 +240,36 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
       controller.abort();
+    };
+  }, [period, dept, channel, queue, selectedOperator, topic, query]);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const data = await fetchChannelsSplitV2({
+          period,
+          ...(dept !== "Все отделы" ? { dept } : {}),
+          ...(channel !== "all" ? { channel } : {}),
+          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
+          ...(topic !== "all" ? { topic } : {}),
+          ...(query ? { q: query } : {}),
+        });
+        if (!alive) return;
+        setApiChannelSplit(data.items ?? []);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] channels/split/v2 failed", e);
+        setApiChannelSplit(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
     };
   }, [period, dept, channel, queue, selectedOperator, topic, query]);
 
@@ -1064,6 +1109,18 @@ const goalSplit = useMemo(() => {
   );
 
   const channelVolumes = useMemo(() => {
+  if (UI_DATA_SOURCE === "API" && apiChannelSplit) {
+    return apiChannelSplit.map((item) => {
+      const normalized = normalizeChannel(item.channel);
+      return {
+        name: CHANNEL_TAB_LABELS[normalized],
+        incoming: item.incoming,
+        outgoing: item.outgoing,
+        responseSec: 0,
+      };
+    });
+  }
+
   const map = new Map<
     string,
     { incoming: number; responseSum: number; cnt: number }
@@ -1103,7 +1160,7 @@ const goalSplit = useMemo(() => {
     outgoing: Math.round(v.incoming * 0.15), // условная доля исходящих
     responseSec: v.cnt ? Math.round(v.responseSum / v.cnt) : 0,
   }));
-}, [filteredCalls]);
+}, [filteredCalls, apiChannelSplit]);
 
 
   const channelResponseTrendTab = useMemo(() => {
