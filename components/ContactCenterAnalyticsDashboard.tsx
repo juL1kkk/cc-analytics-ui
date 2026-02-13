@@ -188,33 +188,48 @@ export default function ContactCenterAnalyticsDashboard() {
 
   const [recentItems, setRecentItems] = useState<any[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
+  const [apiKpis, setApiKpis] = useState<{
+    incoming: number;
+    missed: number;
+    completed: number;
+    ahtSec: number;
+    total: number;
+  } | null>(null);
 
  
   useEffect(() => {
-  if (UI_DATA_SOURCE !== "API") return;
+    if (UI_DATA_SOURCE !== "API") return;
 
-  let alive = true;
-  const controller = new AbortController();
+    let alive = true;
+    const controller = new AbortController();
 
-  (async () => {
-    try {
-      const data = await fetchKpisV2({ period });
-      if (!alive) return;
-      setApiKpis(data);
-    } catch (e) {
-      if (!alive) return;
-      console.warn("[UI] kpis/v2 failed", e);
-      setApiKpis(null);
-    }
-  })();
+    (async () => {
+      try {
+        const data = await fetchKpisV2({
+          period,
+          ...(dept !== "Все отделы" ? { dept } : {}),
+          ...(channel !== "all" ? { channel } : {}),
+          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
+          ...(topic !== "all" ? { topic } : {}),
+          ...(query ? { q: query } : {}),
+        });
+        if (!alive) return;
+        setApiKpis(data);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] kpis/v2 failed", e);
+        setApiKpis(null);
+      }
+    })();
 
-  return () => {
-    alive = false;
-    controller.abort();
-  };
-}, [UI_DATA_SOURCE, period]);
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [period, dept, channel, queue, selectedOperator, topic, query]);
 
-
+  useEffect(() => {
     const controller = new AbortController();
     setRecentLoading(true);
 
@@ -571,15 +586,7 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
   });
 }, [filteredCalls, topic]);
 
-const [apiKpis, setApiKpis] = useState<{
-  incoming: number;
-  missed: number;
-  completed: number;
-  ahtSec: number;
-  total: number;
-} | null>(null);
-
-const kpis = useMemo(() => {
+const kpiStats = useMemo(() => {
   if (UI_DATA_SOURCE === "API" && apiKpis) {
     return apiKpis;
   }
@@ -596,36 +603,46 @@ const kpis = useMemo(() => {
       )
     : 0;
 
-  const operatorsOnCalls = new Set(
-    filteredCalls.map((c) => c.operator)
-  ).size;
-
   const completed = filteredCalls.filter(
     (c) => c.status === "Завершён"
   ).length;
 
-  const fcrPct = incoming
-    ? Math.round((completed / incoming) * 100)
+  return {
+    incoming,
+    missed,
+    completed,
+    ahtSec,
+    total: incoming,
+  };
+}, [filteredCalls, apiKpis]);
+
+const kpis = useMemo(() => {
+  const operatorsOnCalls = new Set(
+    filteredCalls.map((c) => c.operator)
+  ).size;
+
+  const fcrPct = kpiStats.incoming
+    ? Math.round((kpiStats.completed / kpiStats.incoming) * 100)
     : 0;
 
   return [
     {
       title: "Входящие",
-      value: incoming.toLocaleString("ru-RU"),
+      value: kpiStats.incoming.toLocaleString("ru-RU"),
       icon: PhoneCall,
       note: "за период",
       delta: 0,
     },
     {
       title: "Пропущенные",
-      value: missed.toLocaleString("ru-RU"),
+      value: kpiStats.missed.toLocaleString("ru-RU"),
       icon: Bell,
       note: "требуют реакции",
       delta: 0,
     },
     {
       title: "Средняя длительность",
-      value: ahtSec ? formatSec(ahtSec) : "—",
+      value: kpiStats.ahtSec ? formatSec(kpiStats.ahtSec) : "—",
       icon: Clock,
       note: "AHT",
       delta: 0,
@@ -645,7 +662,7 @@ const kpis = useMemo(() => {
       delta: 0,
     },
   ];
-}, [filteredCalls]);
+}, [filteredCalls, kpiStats]);
 
 
 
