@@ -8,6 +8,10 @@ import {
 } from "@/lib/analytics/operators.client";
 import { fetchChannelsSplitV2 } from "@/lib/analytics/channelsSplit.client";
 import { fetchKpisV2, type KpisV2Response } from "@/lib/analytics/kpis.client";
+import {
+  fetchRecentV2,
+  type RecentV2Response,
+} from "@/lib/analytics/recent.client";
 import { fetchTopicsTopV2 } from "@/lib/analytics/topicsTop.client";
 import {
   fetchTopicsTimeseriesV2,
@@ -150,42 +154,32 @@ const GOAL_COLORS: Record<string, string> = {
   "Требует действий": "#f59e0b", // на будущее
 };
 
-type ApiRecentItem = {
-  externalId: string;
-  startedAt: string;
-  channelCode: "voice" | "chat" | "email" | "sms" | "push";
-  channelNameRu: string;
-  queueCode: string;
-  queueNameRu: string;
-  departmentNameRu: string;
-  operatorNameRu: string | null;
-  topicNameRu: string | null;
-  durationSec: number;
-  statusCode: "completed" | "missed" | "waiting" | "in_progress";
-  statusRu: "Завершён" | "Пропущен" | "Ожидание" | "В разговоре";
-};
-
-function mapApiRecentToCallRow(r: ApiRecentItem): CallRow {
-  return {
-    id: `C-${r.externalId}`,
-    startedAt: new Date(r.startedAt).toISOString().slice(11, 16), // HH:MM
-    channel: r.channelCode,
-    queue:
-      r.queueCode === "1" ? "general" :
-      r.queueCode === "2" ? "vip" :
-      r.queueCode === "3" ? "antifraud" :
-      "general",
-    dept:
-      r.departmentNameRu === "Антифрод" ? "Антифрод" :
-      r.departmentNameRu === "Контроль качества" ? "Контроль качества" :
-      "Контакт-центр",
-    operator: r.operatorNameRu ?? "—",
-    topic: r.topicNameRu ?? "Не указано",
-    durationSec: r.durationSec ?? 0,
-    status: r.statusRu,
-    fcr: false,
-    resolution: "resolved",
-  };
+function mapRecentToUi(apiResp: RecentV2Response): CallRow[] {
+  return (apiResp.items ?? []).map((r) => ({
+      id: `C-${r.externalId}`,
+      startedAt: new Date(r.startedAt).toISOString().slice(11, 16),
+      channel: r.channelCode,
+      queue:
+        r.queueCode === "general" || r.queueCode === "1"
+          ? "general"
+          : r.queueCode === "vip" || r.queueCode === "2"
+          ? "vip"
+          : r.queueCode === "antifraud" || r.queueCode === "3"
+          ? "antifraud"
+          : "general",
+      dept:
+        r.departmentNameRu === "Антифрод"
+          ? "Антифрод"
+          : r.departmentNameRu === "Контроль качества"
+          ? "Контроль качества"
+          : "Контакт-центр",
+      operator: r.operatorNameRu ?? "—",
+      topic: r.topicNameRu ?? "Не указано",
+      durationSec: r.durationSec ?? 0,
+      status: r.statusRu,
+      fcr: false,
+      resolution: "resolved",
+    }));
 }
 
 function mapTopicsTsToUi(apiResp: TopicsTimeseriesResponseV2) {
@@ -214,8 +208,7 @@ export default function ContactCenterAnalyticsDashboard() {
 
   
 
-  const [recentItems, setRecentItems] = useState<any[]>([]);
-  const [recentLoading, setRecentLoading] = useState(false);
+  const [apiRecent, setApiRecent] = useState<RecentV2Response | null>(null);
   const [apiKpis, setApiKpis] = useState<KpisV2Response | null>(null);
   const [apiOperators, setApiOperators] = useState<OperatorRowV2[] | null>(null);
 
@@ -374,29 +367,36 @@ export default function ContactCenterAnalyticsDashboard() {
   }, [period, dept, channel, queue, selectedOperator, topic, query]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    setRecentLoading(true);
+    if (UI_DATA_SOURCE !== "API") return;
 
-    const url =
-      `/api/analytics/recent/v2?period=${encodeURIComponent(period)}` +
-      `&limit=20&offset=0` +
-      (channel !== "all" ? `&channel=${encodeURIComponent(channel)}` : "") +
-      (queue !== "all" ? `&queue=${encodeURIComponent(queue)}` : "") +
-      (dept !== "Все отделы" ? `&dept=${encodeURIComponent(dept)}` : "") +
-      (query ? `&q=${encodeURIComponent(query)}` : "");
+    let alive = true;
 
+    (async () => {
+      try {
+        const data = await fetchRecentV2({
+          period,
+          ...(dept !== "Все отделы" ? { dept } : {}),
+          ...(channel !== "all" ? { channel } : {}),
+          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
+          ...(topic !== "all" ? { topic } : {}),
+          ...(query ? { q: query } : {}),
+          limit: 20,
+          offset: 0,
+        });
+        if (!alive) return;
+        setApiRecent(data);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] recent/v2 failed", e);
+        setApiRecent(null);
+      }
+    })();
 
-    fetch(url, { signal: controller.signal })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.items) setRecentItems(data.items);
-        else setRecentItems([]);
-      })
-      .catch(() => setRecentItems([]))
-      .finally(() => setRecentLoading(false));
-
-    return () => controller.abort();
-  }, [period, channel, queue, dept, query]);
+    return () => {
+      alive = false;
+    };
+  }, [UI_DATA_SOURCE, period, dept, channel, queue, selectedOperator, topic, query]);
 
   const calls: CallRow[] = useMemo(() => {
   const result: CallRow[] = [];
@@ -577,10 +577,9 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     return filteredCalls.filter((c) => c.channel === channelTab);
   }, [filteredCalls, channelTab]);
 
-    const latestCalls = useMemo(() => {
-    // === API mode: лента берётся из /api/analytics/recent ===
-    if (UI_DATA_SOURCE === "API") {
-      return recentItems.map(mapApiRecentToCallRow);
+  const latestCalls = useMemo(() => {
+    if (UI_DATA_SOURCE === "API" && apiRecent !== null) {
+      return mapRecentToUi(apiRecent);
     }
 
     // === MOCK mode: как было ===
@@ -593,7 +592,7 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     return filteredCalls;
   }, [
     UI_DATA_SOURCE,
-    recentItems,
+    apiRecent,
     tab,
     selectedQueue,
     filteredCalls,
