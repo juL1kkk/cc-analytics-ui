@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchTimeseriesV2 } from "@/lib/analytics/timeseries.client";
 import { fetchKpisV2 } from "@/lib/analytics/kpis.client";
 import { getUiSource } from "@/lib/uiSource";
 import { CALLS_BY_PERIOD } from "@/mock/callsByPeriod";
@@ -196,7 +197,10 @@ export default function ContactCenterAnalyticsDashboard() {
     total: number;
   } | null>(null);
 
- 
+  const [apiTimeSeries, setApiTimeSeries] = useState<
+   { t: string; incoming: number; missed: number; ahtSec?: number }[] | null
+  >(null);
+
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
 
