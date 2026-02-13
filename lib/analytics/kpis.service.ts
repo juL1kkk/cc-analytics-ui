@@ -1,4 +1,4 @@
-import { getAnalyticsDataSource } from "@/config/analyticsSource";
+import { getAnalyticsDataSource } from "@/lib/analytics/provider";
 import type { KpisFilters, KpisResponse } from "./kpis.types";
 import { getMockKpis } from "./kpis.mock";
 import { getRealKpis } from "./kpis.real";
