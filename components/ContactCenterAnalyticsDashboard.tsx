@@ -10,6 +10,10 @@ import { fetchChannelsSplitV2 } from "@/lib/analytics/channelsSplit.client";
 import { fetchKpisV2, type KpisV2Response } from "@/lib/analytics/kpis.client";
 import { fetchTopicsTopV2 } from "@/lib/analytics/topicsTop.client";
 import {
+  fetchTopicsTimeseriesV2,
+  type TopicsTimeseriesResponseV2,
+} from "@/lib/analytics/topicsTimeseries.client";
+import {
   fetchTimeseriesV2,
   type TimeseriesPointV2,
 } from "@/lib/analytics/timeseries/client";
@@ -184,6 +188,18 @@ function mapApiRecentToCallRow(r: ApiRecentItem): CallRow {
   };
 }
 
+function mapTopicsTsToUi(apiResp: TopicsTimeseriesResponseV2) {
+  return (apiResp.items ?? []).map((p) => {
+    const unsolved = p.missed ?? 0;
+    const solved = Math.max(0, (p.incoming ?? 0) - unsolved);
+    return {
+      t: new Date(p.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      solved,
+      unsolved,
+    };
+  });
+}
+
 export default function ContactCenterAnalyticsDashboard() {
   const [period, setPeriod] = useState<Period>("today");
   const [channel, setChannel] = useState<Channel>("all");
@@ -217,6 +233,7 @@ export default function ContactCenterAnalyticsDashboard() {
   const [apiTopicsTop, setApiTopicsTop] = useState<
     Array<{ name: string; count: number; avgHandleSec: number; fcrPct: number }> | null
   >(null);
+  const [apiTopicsTs, setApiTopicsTs] = useState<TopicsTimeseriesResponseV2 | null>(null);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -247,6 +264,37 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
       controller.abort();
+    };
+  }, [UI_DATA_SOURCE, period, dept, channel, queue, selectedOperator, topic, query]);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const data = await fetchTopicsTimeseriesV2({
+          period,
+          bucket: "hour",
+          ...(dept !== "Все отделы" ? { dept } : {}),
+          ...(channel !== "all" ? { channel } : {}),
+          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
+          topic,
+          ...(query ? { q: query } : {}),
+        });
+        if (!alive) return;
+        setApiTopicsTs(data);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] topics/timeseries/v2 failed", e);
+        setApiTopicsTs(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
     };
   }, [period, dept, channel, queue, selectedOperator, topic, query]);
 
@@ -656,6 +704,10 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
   }, [topicCalls]);
 
   const topicTimeSeries = useMemo(() => {
+  if (UI_DATA_SOURCE === "API" && apiTopicsTs != null) {
+    return mapTopicsTsToUi(apiTopicsTs);
+  }
+
   const hours = ["09", "10", "11", "12", "13", "14", "15"];
 
   const map = new Map<string, { solved: number; unsolved: number }>();
@@ -683,7 +735,7 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     const v = map.get(t) ?? { solved: 0, unsolved: 0 };
     return { t, solved: v.solved, unsolved: v.unsolved };
   });
-}, [filteredCalls, topic]);
+}, [UI_DATA_SOURCE, apiTopicsTs, filteredCalls, topic]);
 
 const kpis = useMemo(() => {
   if (UI_DATA_SOURCE === "API" && apiKpis) {
