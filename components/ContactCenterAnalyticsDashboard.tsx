@@ -21,6 +21,10 @@ import {
   fetchTimeseriesV2,
   type TimeseriesPointV2,
 } from "@/lib/analytics/timeseries/client";
+import {
+  fetchSentimentV2,
+  type SentimentV2Response,
+} from "@/lib/analytics/sentiment.client";
 import { getUiSource } from "@/lib/uiSource";
 import { CALLS_BY_PERIOD } from "@/mock/callsByPeriod";
 import React, { useEffect, useMemo, useState } from "react";
@@ -211,6 +215,15 @@ function mapOperatorsToUi(apiResp: OperatorsResponseV2) {
   };
 }
 
+function mapSentimentToUi(apiResp: SentimentV2Response) {
+  return (apiResp.items ?? [])
+    .map((item) => ({
+      name: item.nameRu,
+      value: item.value,
+    }))
+    .filter((item) => item.value > 0);
+}
+
 export default function ContactCenterAnalyticsDashboard() {
   const [period, setPeriod] = useState<Period>("today");
   const [channel, setChannel] = useState<Channel>("all");
@@ -240,10 +253,41 @@ export default function ContactCenterAnalyticsDashboard() {
  >(null);
 
   const [apiTimeSeries, setApiTimeSeries] = useState<TimeseriesPointV2[] | null>(null);
+  const [apiSentiment, setApiSentiment] = useState<SentimentV2Response | null>(null);
   const [apiTopicsTop, setApiTopicsTop] = useState<
     Array<{ name: string; count: number; avgHandleSec: number; fcrPct: number }> | null
   >(null);
   const [apiTopicsTs, setApiTopicsTs] = useState<TopicsTimeseriesResponseV2 | null>(null);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const data = await fetchSentimentV2({
+          period,
+          ...(dept !== "Все отделы" ? { dept } : {}),
+          ...(channel !== "all" ? { channel } : {}),
+          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
+          ...(topic !== "all" ? { topic } : {}),
+          ...(query ? { q: query } : {}),
+        });
+        if (!alive) return;
+        setApiSentiment(data);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] sentiment/v2 failed", e);
+        setApiSentiment(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [UI_DATA_SOURCE, period, dept, channel, queue, selectedOperator, topic, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -995,6 +1039,13 @@ const operatorLoad = useMemo(() => {
     .filter((x) => x.value > 0);
 }, [filteredCalls]);
 
+ const sentimentSplitView = useMemo(() => {
+  if (UI_DATA_SOURCE === "API" && apiSentiment !== null) {
+    return mapSentimentToUi(apiSentiment);
+  }
+  return sentimentSplit;
+ }, [UI_DATA_SOURCE, apiSentiment, sentimentSplit]);
+
 const goalSplit = useMemo(() => {
   const counts = { "Решено": 0, "Эскалация": 0, "Требует действий": 0 };
 
@@ -1625,15 +1676,15 @@ const goalSplit = useMemo(() => {
         <PieChart>
           <Tooltip />
           <Legend />
-          <Pie
-            data={sentimentSplit}
+            <Pie
+            data={sentimentSplitView}
             dataKey="value"
             nameKey="name"
             innerRadius={55}
             outerRadius={90}
             paddingAngle={2}
           >
-            {sentimentSplit.map((entry) => (
+            {sentimentSplitView.map((entry) => (
   <Cell
     key={entry.name}
     fill={SENTIMENT_COLORS[entry.name] || "#9ca3af"}
