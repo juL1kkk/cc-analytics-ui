@@ -25,6 +25,22 @@ import {
   fetchSentimentV2,
   type SentimentV2Response,
 } from "@/lib/analytics/sentiment.client";
+import {
+  fetchDepartmentsV2,
+  type DepartmentsDictionaryResponseV2,
+} from "@/lib/dictionaries/departments.client";
+import {
+  fetchChannelsV2,
+  type ChannelsDictionaryResponseV2,
+} from "@/lib/dictionaries/channels.client";
+import {
+  fetchQueuesV2,
+  type QueuesDictionaryResponseV2,
+} from "@/lib/dictionaries/queues.client";
+import {
+  fetchTopicsV2,
+  type TopicsDictionaryResponseV2,
+} from "@/lib/dictionaries/topics.client";
 import { getUiSource } from "@/lib/uiSource";
 import { CALLS_BY_PERIOD } from "@/mock/callsByPeriod";
 import React, { useEffect, useMemo, useState } from "react";
@@ -90,6 +106,50 @@ type Theme = {
   avgHandleSec: number;
   fcrPct: number;
 };
+
+type FilterOption = {
+  label: string;
+  value: string;
+};
+
+type DictionaryOptionSource = {
+  id?: string | number;
+  code?: string;
+  channelCode?: string;
+  queueCode?: string;
+  topicCode?: string;
+  nameRu?: string;
+  name?: string;
+  label?: string;
+  value?: string;
+};
+
+const mockDepartments: FilterOption[] = [
+  { label: "Контакт-центр", value: "Контакт-центр" },
+  { label: "Контроль качества", value: "Контроль качества" },
+  { label: "Антифрод", value: "Антифрод" },
+];
+
+const mockChannels: FilterOption[] = [
+  { label: "Звонки", value: "voice" },
+  { label: "Чат", value: "chat" },
+  { label: "Email", value: "email" },
+  { label: "SMS", value: "sms" },
+  { label: "Push", value: "push" },
+];
+
+const mockQueues: FilterOption[] = [
+  { label: "Общая", value: "general" },
+  { label: "VIP", value: "vip" },
+  { label: "Антифрод", value: "antifraud" },
+];
+
+const mockTopics: FilterOption[] = [
+  { label: "Авторизация ЛК", value: "Авторизация ЛК" },
+  { label: "Сброс пароля", value: "Сброс пароля" },
+  { label: "Консультация", value: "Консультация" },
+  { label: "Ошибки в приложении", value: "Ошибки в приложении" },
+];
 
 type CallRow = {
   id: string;
@@ -224,6 +284,26 @@ function mapSentimentToUi(apiResp: SentimentV2Response) {
     .filter((item) => item.value > 0);
 }
 
+function mapDictionaryToOptions(apiResp: { items?: DictionaryOptionSource[] }): FilterOption[] {
+  return (apiResp.items ?? [])
+    .map((item) => {
+      const label =
+        item.nameRu ?? item.name ?? item.label;
+      const value =
+        item.code ??
+        item.channelCode ??
+        item.queueCode ??
+        item.topicCode ??
+        item.value ??
+        (typeof item.id === "string" || typeof item.id === "number" ? String(item.id) : undefined) ??
+        label;
+
+      if (!label || !value) return null;
+      return { label, value };
+    })
+    .filter((item): item is FilterOption => item !== null);
+}
+
 export default function ContactCenterAnalyticsDashboard() {
   const [period, setPeriod] = useState<Period>("today");
   const [channel, setChannel] = useState<Channel>("all");
@@ -258,6 +338,45 @@ export default function ContactCenterAnalyticsDashboard() {
     Array<{ name: string; count: number; avgHandleSec: number; fcrPct: number }> | null
   >(null);
   const [apiTopicsTs, setApiTopicsTs] = useState<TopicsTimeseriesResponseV2 | null>(null);
+  const [apiDepartments, setApiDepartments] = useState<DepartmentsDictionaryResponseV2 | null>(null);
+  const [apiChannels, setApiChannels] = useState<ChannelsDictionaryResponseV2 | null>(null);
+  const [apiQueues, setApiQueues] = useState<QueuesDictionaryResponseV2 | null>(null);
+  const [apiTopics, setApiTopics] = useState<TopicsDictionaryResponseV2 | null>(null);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const [departments, channels, queues, topics] = await Promise.all([
+          fetchDepartmentsV2(),
+          fetchChannelsV2(),
+          fetchQueuesV2(),
+          fetchTopicsV2(),
+        ]);
+
+        if (!alive) return;
+
+        setApiDepartments(departments);
+        setApiChannels(channels);
+        setApiQueues(queues);
+        setApiTopics(topics);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] dictionaries/v2 failed", e);
+        setApiDepartments(null);
+        setApiChannels(null);
+        setApiQueues(null);
+        setApiTopics(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [UI_DATA_SOURCE]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -678,10 +797,36 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
   ]);
 
   const topicOptions = useMemo(() => {
+    if (UI_DATA_SOURCE === "API" && apiTopics != null) {
+      return mapDictionaryToOptions(apiTopics).map((item) => item.value);
+    }
+
     const s = new Set<string>();
     for (const c of filteredCalls) s.add(c.topic);
+    if (s.size === 0) return mockTopics.map((item) => item.value);
     return Array.from(s).sort((a, b) => a.localeCompare(b));
-  }, [filteredCalls]);
+  }, [UI_DATA_SOURCE, apiTopics, filteredCalls]);
+
+  const departmentOptions = useMemo(() => {
+    if (UI_DATA_SOURCE === "API" && apiDepartments != null) {
+      return mapDictionaryToOptions(apiDepartments);
+    }
+    return mockDepartments;
+  }, [UI_DATA_SOURCE, apiDepartments]);
+
+  const channelOptions = useMemo(() => {
+    if (UI_DATA_SOURCE === "API" && apiChannels != null) {
+      return mapDictionaryToOptions(apiChannels);
+    }
+    return mockChannels;
+  }, [UI_DATA_SOURCE, apiChannels]);
+
+  const queueSelectOptions = useMemo(() => {
+    if (UI_DATA_SOURCE === "API" && apiQueues != null) {
+      return mapDictionaryToOptions(apiQueues);
+    }
+    return mockQueues;
+  }, [UI_DATA_SOURCE, apiQueues]);
 
   const topicCalls = useMemo(
     () =>
@@ -1474,9 +1619,11 @@ const goalSplit = useMemo(() => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Все отделы">Все отделы</SelectItem>
-                  <SelectItem value="Контакт-центр">Контакт-центр</SelectItem>
-                  <SelectItem value="Контроль качества">Контроль качества</SelectItem>
-                  <SelectItem value="Антифрод">Антифрод</SelectItem>
+                  {departmentOptions.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1488,11 +1635,11 @@ const goalSplit = useMemo(() => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Все каналы</SelectItem>
-                  <SelectItem value="voice">Звонки</SelectItem>
-                  <SelectItem value="chat">Чат</SelectItem>
-                  <SelectItem value="email">Email</SelectItem>
-                  <SelectItem value="sms">SMS</SelectItem>
-                  <SelectItem value="push">Push</SelectItem>
+                  {channelOptions.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1504,9 +1651,11 @@ const goalSplit = useMemo(() => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Все очереди</SelectItem>
-                  <SelectItem value="general">Общая</SelectItem>
-                  <SelectItem value="vip">VIP</SelectItem>
-                  <SelectItem value="antifraud">Антифрод</SelectItem>
+                  {queueSelectOptions.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
