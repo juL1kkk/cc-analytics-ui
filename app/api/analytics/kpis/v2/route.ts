@@ -1,3 +1,39 @@
+import { NextResponse } from "next/server";
+import { query } from "@/lib/db";
+
+export const runtime = "nodejs";
+
+type Row = {
+  incoming: number;
+  missed: number;
+  completed: number;
+  aht_sec: number;
+  total: number;
+};
+
+function parseDate(v: string | null) {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function periodToRange(period: string | null) {
+  const now = new Date();
+  const end = now;
+  const start = new Date(now);
+
+  if (period === "today") start.setHours(0, 0, 0, 0);
+  else if (period === "yesterday") {
+    start.setDate(start.getDate() - 1);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+  } else if (period === "7d") start.setDate(start.getDate() - 7);
+  else if (period === "30d") start.setDate(start.getDate() - 30);
+  else return null;
+
+  return { from: start, to: end };
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const debug = url.searchParams.get("debug") === "1";
@@ -12,12 +48,12 @@ export async function GET(request: Request) {
       fromQ ?? range?.from ?? new Date(Date.now() - 7 * 24 * 3600 * 1000);
     const to = toQ ?? range?.to ?? new Date();
 
-    const channel = url.searchParams.get("channel")?.trim() || null; // channel code (voice/chat/...)
-    const dept = url.searchParams.get("dept")?.trim() || null; // department uuid
-    const queue = url.searchParams.get("queue")?.trim() || null; // queue uuid
-    const operator = url.searchParams.get("operator")?.trim() || null; // user uuid
-    const topic = url.searchParams.get("topic")?.trim() || null; // ticket subject uuid
-    const q = url.searchParams.get("q")?.trim() || null; // request number search
+    const channel = url.searchParams.get("channel")?.trim() || null;
+    const dept = url.searchParams.get("dept")?.trim() || null;
+    const queue = url.searchParams.get("queue")?.trim() || null;
+    const operator = url.searchParams.get("operator")?.trim() || null;
+    const topic = url.searchParams.get("topic")?.trim() || null;
+    const q = url.searchParams.get("q")?.trim() || null;
 
     const sql = `
       with filtered_calls as (
@@ -103,7 +139,13 @@ export async function GET(request: Request) {
     const params = [from, to, channel, dept, queue, operator, topic, q] as const;
 
     const { rows } = await query<Row>(sql, [...params]);
-    const r = rows[0] ?? { incoming: 0, missed: 0, completed: 0, aht_sec: 0, total: 0 };
+    const r = rows[0] ?? {
+      incoming: 0,
+      missed: 0,
+      completed: 0,
+      aht_sec: 0,
+      total: 0,
+    };
 
     const body = {
       incoming: r.incoming,
@@ -114,10 +156,12 @@ export async function GET(request: Request) {
     };
 
     return NextResponse.json(debug ? { ...body, debug: { sql, params } } : body);
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("KPIS V2 ERROR:", e);
+    const message = e instanceof Error ? e.message : String(e);
+
     return NextResponse.json(
-      { error: { code: "DB_ERROR", message: String(e?.message ?? e) } },
+      { error: { code: "DB_ERROR", message } },
       { status: 500 },
     );
   }
