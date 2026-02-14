@@ -59,6 +59,7 @@ export async function GET(request: Request) {
       with filtered_calls as (
         select
           c.*,
+          u.department_id as department_id,
           ch.code as channel_code,
           (
             lower(coalesce(to_jsonb(c)->>'completed', 'false')) = 'true'
