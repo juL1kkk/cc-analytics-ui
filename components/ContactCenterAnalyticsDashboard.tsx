@@ -25,6 +25,10 @@ import {
   fetchSentimentV2,
   type SentimentV2Response,
 } from "@/lib/analytics/sentiment.client";
+import {
+  fetchAgentStateSummaryV2,
+  type AgentStateSummaryV2,
+} from "@/lib/analytics/agentStateSummary.client";
 import { fetchGoalSplitV2 } from "@/lib/analytics/goalSplit.client";
 import {
   fetchDepartmentsV2,
@@ -360,6 +364,7 @@ export default function ContactCenterAnalyticsDashboard() {
     Array<{ name: string; count: number; avgHandleSec: number; fcrPct: number }> | null
   >(null);
   const [apiTopicsTs, setApiTopicsTs] = useState<TopicsTimeseriesResponseV2 | null>(null);
+  const [apiAgentStateSummary, setApiAgentStateSummary] = useState<AgentStateSummaryV2 | null>(null);
   const [apiDepartments, setApiDepartments] = useState<DepartmentsDictionaryResponseV2 | null>(null);
   const [apiChannels, setApiChannels] = useState<ChannelsDictionaryResponseV2 | null>(null);
   const [apiQueues, setApiQueues] = useState<QueuesDictionaryResponseV2 | null>(null);
@@ -429,6 +434,32 @@ export default function ContactCenterAnalyticsDashboard() {
       alive = false;
     };
   }, [UI_DATA_SOURCE, period, dept, channel, queue, selectedOperator, topic, query]);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const data = await fetchAgentStateSummaryV2({
+          period,
+          ...(dept !== "Все отделы" ? { dept } : {}),
+          ...(queue !== "all" ? { queue } : {}),
+        });
+        if (!alive) return;
+        setApiAgentStateSummary(data);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] agent-state/summary/v2 failed", e);
+        setApiAgentStateSummary(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [UI_DATA_SOURCE, period, dept, queue]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -1154,6 +1185,14 @@ const kpiCards = useMemo(() => {
 
 
 const operatorLoad = useMemo(() => {
+  if (UI_DATA_SOURCE === "API" && apiAgentStateSummary) {
+    return [
+      { name: "На линии", value: apiAgentStateSummary.onLine },
+      { name: "Ожидают", value: apiAgentStateSummary.waiting },
+      { name: "Не доступен", value: apiAgentStateSummary.unavailable },
+    ];
+  }
+
   const handled = filteredCalls.filter((c) => c.status === "Завершён").length;
   const missed = filteredCalls.filter((c) => c.status === "Пропущен").length;
 
@@ -1166,7 +1205,7 @@ const operatorLoad = useMemo(() => {
     { name: "Ожидают", value: waiting },
     { name: "Не доступен", value: unavailable },
   ];
-}, [filteredCalls]);
+}, [UI_DATA_SOURCE, apiAgentStateSummary, filteredCalls]);
   const topicsTrend = useMemo(() => {
   const hours = ["09", "10", "11", "12", "13", "14", "15"];
 
@@ -1850,9 +1889,9 @@ const goalSplit = useMemo(() => {
                           </BarChart>
                         </ResponsiveContainer>
                         <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          <Badge variant="outline">На линии: 32</Badge>
-                          <Badge variant="outline">Ожидают: 4</Badge>
-                          <Badge variant="outline">Не доступен: 8</Badge>
+                          <Badge variant="outline">На линии: {operatorLoad[0]?.value ?? 0}</Badge>
+                          <Badge variant="outline">Ожидают: {operatorLoad[1]?.value ?? 0}</Badge>
+                          <Badge variant="outline">Не доступен: {operatorLoad[2]?.value ?? 0}</Badge>
                         </div>
                       </CardContent>
                     </Card>
