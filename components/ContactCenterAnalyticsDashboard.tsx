@@ -25,6 +25,7 @@ import {
   fetchSentimentV2,
   type SentimentV2Response,
 } from "@/lib/analytics/sentiment.client";
+import { fetchGoalSplitV2 } from "@/lib/analytics/goalSplit.client";
 import {
   fetchDepartmentsV2,
   type DepartmentsDictionaryResponseV2,
@@ -284,6 +285,26 @@ function mapSentimentToUi(apiResp: SentimentV2Response) {
     .filter((item) => item.value > 0);
 }
 
+function mapGoalToUi(apiResp: Array<{ nameRu: string; value: number }> | null) {
+  const values = { "Решено": 0, "Эскалация": 0 };
+
+  for (const item of apiResp ?? []) {
+    const key = item.nameRu.trim().toLowerCase();
+    if (["решено", "resolved", "completed"].includes(key)) {
+      values["Решено"] += item.value;
+      continue;
+    }
+    if (["эскалация", "escalated", "escalation"].includes(key)) {
+      values["Эскалация"] += item.value;
+    }
+  }
+
+  return [
+    { name: "Решено", value: values["Решено"] },
+    { name: "Эскалация", value: values["Эскалация"] },
+  ];
+}
+
 function mapDictionaryToOptions(apiResp: { items?: DictionaryOptionSource[] }): FilterOption[] {
   return (apiResp.items ?? [])
     .map((item) => {
@@ -334,6 +355,7 @@ export default function ContactCenterAnalyticsDashboard() {
 
   const [apiTimeSeries, setApiTimeSeries] = useState<TimeseriesPointV2[] | null>(null);
   const [apiSentiment, setApiSentiment] = useState<SentimentV2Response | null>(null);
+  const [apiGoalSplit, setApiGoalSplit] = useState<Array<{ nameRu: string; value: number }> | null>(null);
   const [apiTopicsTop, setApiTopicsTop] = useState<
     Array<{ name: string; count: number; avgHandleSec: number; fcrPct: number }> | null
   >(null);
@@ -400,6 +422,36 @@ export default function ContactCenterAnalyticsDashboard() {
         if (!alive) return;
         console.warn("[UI] sentiment/v2 failed", e);
         setApiSentiment(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [UI_DATA_SOURCE, period, dept, channel, queue, selectedOperator, topic, query]);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const data = await fetchGoalSplitV2({
+          period,
+          ...(dept !== "Все отделы" ? { dept } : {}),
+          ...(channel !== "all" ? { channel } : {}),
+          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
+          ...(topic !== "all" ? { topic } : {}),
+          ...(query ? { q: query } : {}),
+        });
+        if (!alive) return;
+        setApiGoalSplit(data);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] goal split source failed", e);
+        setApiGoalSplit(null);
       }
     })();
 
@@ -1199,6 +1251,10 @@ const operatorLoad = useMemo(() => {
  }, [UI_DATA_SOURCE, apiSentiment, sentimentSplit]);
 
 const goalSplit = useMemo(() => {
+  if (UI_DATA_SOURCE === "API") {
+    return mapGoalToUi(apiGoalSplit);
+  }
+
   const counts = { "Решено": 0, "Эскалация": 0, "Требует действий": 0 };
 
   for (const c of filteredCalls) {
@@ -1210,7 +1266,7 @@ const goalSplit = useMemo(() => {
   return Object.entries(counts)
     .map(([name, value]) => ({ name, value }))
     .filter((x) => x.value > 0);
-}, [filteredCalls]);
+}, [UI_DATA_SOURCE, apiGoalSplit, filteredCalls]);
 
   const themes: Theme[] = useMemo(() => {
   const map = new Map<
