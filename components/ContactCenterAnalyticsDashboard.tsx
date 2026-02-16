@@ -1147,28 +1147,35 @@ const operatorLoad = useMemo(() => {
   return { data: base, topTopics };
 }, [filteredCalls]);
   const channelSplit = useMemo(() => {
-  const map = new Map<string, number>();
+    if (UI_DATA_SOURCE === "API") {
+      return (apiChannelSplit ?? []).map((item) => ({
+        name: item.channelNameRu,
+        value: item.incoming + item.outgoing,
+      }));
+    }
 
-  for (const c of filteredCalls) {
-    const label =
-      c.channel === "voice"
-        ? "Звонки"
-        : c.channel === "chat"
-        ? "Чат"
-        : c.channel === "email"
-        ? "Email"
-        : c.channel === "sms"
-        ? "SMS"
-        : "Push";
+    const map = new Map<string, number>();
 
-    map.set(label, (map.get(label) ?? 0) + 1);
-  }
+    for (const c of filteredCalls) {
+      const label =
+        c.channel === "voice"
+          ? "Звонки"
+          : c.channel === "chat"
+          ? "Чат"
+          : c.channel === "email"
+          ? "Email"
+          : c.channel === "sms"
+          ? "SMS"
+          : "Push";
 
-  return Array.from(map.entries()).map(([name, value]) => ({
-    name,
-    value,
-  }));
-}, [filteredCalls]);
+      map.set(label, (map.get(label) ?? 0) + 1);
+    }
+
+    return Array.from(map.entries()).map(([name, value]) => ({
+      name,
+      value,
+    }));
+  }, [UI_DATA_SOURCE, apiChannelSplit, filteredCalls]);
 
  const sentimentSplit = useMemo(() => {
   const counts = { "Позитив": 0, "Нейтрально": 0, "Негатив": 0 };
