@@ -100,6 +100,7 @@ const UI_DATA_SOURCE = getUiSource() ?? envDefault;
 type Period = "today" | "yesterday" | "7d" | "30d" | "custom";
 
 type Channel = "all" | "voice" | "chat" | "email" | "sms" | "push";
+type TopicDirection = "all" | "in" | "out";
 
 type Queue = "all" | "general" | "vip" | "antifraud";
 
@@ -309,6 +310,14 @@ function mapGoalToUi(apiResp: Array<{ nameRu: string; value: number }> | null) {
   ];
 }
 
+function normalizeTopicName(value: string | null | undefined) {
+  if (!value) return "Не указано";
+  const v = value.trim();
+  const uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRe.test(v) ? "Не указано" : v;
+}
+
 function mapDictionaryToOptions(apiResp: { items?: DictionaryOptionSource[] }): FilterOption[] {
   return (apiResp.items ?? [])
     .map((item) => {
@@ -347,6 +356,7 @@ export default function ContactCenterAnalyticsDashboard() {
   const [query, setQuery] = useState<string>("");
   const [tab, setTab] = useState<string>("overview");
   const [topic, setTopic] = useState<string>("all");
+  const [topicDirection, setTopicDirection] = useState<TopicDirection>("all");
   const [selectedOperator, setSelectedOperator] = useState<string>("all");
   const [selectedQueue, setSelectedQueue] = useState<string>("all");
   const [channelTab, setChannelTab] = useState<Channel>("all");
@@ -570,11 +580,18 @@ export default function ContactCenterAnalyticsDashboard() {
     let alive = true;
     (async () => {
       try {
-        const res = await fetchTopicsTopV2({ period });
+        const res = await fetchTopicsTopV2({
+          period,
+          direction: topicDirection,
+          ...(dept !== "Все отделы" ? { dept } : {}),
+          ...(channel !== "all" ? { channel } : {}),
+          ...(queue !== "all" ? { queue } : {}),
+          ...(query ? { q: query } : {}),
+        });
         if (!alive) return;
         setApiTopicsTop(
           (res.topTopics ?? []).map((t) => ({
-            name: t.topicNameRu,
+            name: normalizeTopicName(t.topicNameRu),
             count: t.count,
             avgHandleSec: t.avgHandleSec,
             fcrPct: t.fcrPct,
@@ -589,7 +606,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [UI_DATA_SOURCE, period, dept, channel, queue, query]);
+  }, [UI_DATA_SOURCE, period, topicDirection, dept, channel, queue, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -2361,20 +2378,49 @@ const goalSplit = useMemo(() => {
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <CardTitle className="text-base">Количество обращений по выбранной теме</CardTitle>
 
-        <div className="w-full md:w-[320px]">
-          <Select value={topic} onValueChange={setTopic}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Тема" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все темы</SelectItem>
-              {topicOptions.map((t: string) => (
-                <SelectItem key={t} value={t}>
-                  {t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+          <div className="flex gap-1 rounded-lg border p-1">
+            <Button
+              type="button"
+              size="sm"
+              variant={topicDirection === "all" ? "default" : "ghost"}
+              onClick={() => setTopicDirection("all")}
+            >
+              Все
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={topicDirection === "in" ? "default" : "ghost"}
+              onClick={() => setTopicDirection("in")}
+            >
+              Входящие
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={topicDirection === "out" ? "default" : "ghost"}
+              onClick={() => setTopicDirection("out")}
+            >
+              Исходящие
+            </Button>
+          </div>
+
+          <div className="w-full md:w-[320px]">
+            <Select value={topic} onValueChange={setTopic}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Тема" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все темы</SelectItem>
+                {topicOptions.map((t: string) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
     </CardHeader>
