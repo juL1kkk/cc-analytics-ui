@@ -826,10 +826,21 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
   }, [calls, channel, queue, dept, query]);
 
   const operatorOptions = useMemo(() => {
+    if (UI_DATA_SOURCE === "API" && apiOperators?.items?.length) {
+      return apiOperators.items
+        .filter((item) => Boolean(item.operatorLogin))
+        .map((item) => ({
+          label: item.operatorNameRu,
+          value: item.operatorLogin as string,
+        }));
+    }
+
     const s = new Set<string>();
     for (const c of filteredCalls) s.add(c.operator);
-    return Array.from(s).sort((a, b) => a.localeCompare(b));
-  }, [filteredCalls]);
+    return Array.from(s)
+      .sort((a, b) => a.localeCompare(b))
+      .map((operator) => ({ label: operator, value: operator }));
+  }, [UI_DATA_SOURCE, apiOperators, filteredCalls]);
 
   const queueOptions = useMemo(() => {
     const s = new Set<string>();
@@ -841,8 +852,9 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
 
   const operatorFilteredCalls = useMemo(() => {
     if (selectedOperator === "all") return filteredCalls;
+    if (UI_DATA_SOURCE === "API") return filteredCalls;
     return filteredCalls.filter((c) => c.operator === selectedOperator);
-  }, [filteredCalls, selectedOperator]);
+  }, [UI_DATA_SOURCE, filteredCalls, selectedOperator]);
 
   const queueCalls = useMemo(
     () =>
@@ -2039,8 +2051,8 @@ const goalSplit = useMemo(() => {
                             <SelectContent>
                               <SelectItem value="all">Все операторы</SelectItem>
                               {operatorOptions.map((operator) => (
-                                <SelectItem key={operator} value={operator}>
-                                  {operator}
+                                <SelectItem key={operator.value} value={operator.value}>
+                                  {operator.label}
                                 </SelectItem>
                               ))}
                             </SelectContent>

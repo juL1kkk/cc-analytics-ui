@@ -1,6 +1,7 @@
 export type OperatorRowV2 = {
   operatorId: number;
   operatorNameRu: string;
+  operatorLogin: string | null;
   handled: number;
   missed: number;
   ahtSec: number;
