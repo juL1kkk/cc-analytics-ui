@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 
 type TicketSubjectOutRow = {
   id: string;
-  code: string;
+  code?: string;
   name: string;
   active?: boolean;
 };
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 
     const sql = `
       SELECT "id", "code", "name"${debug ? `, "active"` : ""}
-      FROM cc_replica."TicketSubjectOut"
+      FROM cc_replica."TicketSubject"
       ${!all && debug ? `WHERE "active" = true` : ""}
       ORDER BY "name" ASC
     `;
@@ -27,7 +27,7 @@ export async function GET(req: Request) {
 
     const items = rows.map((row) => ({
       id: String(row.id),
-      code: String(row.code),
+      ...(row.code ? { code: String(row.code) } : {}),
       nameRu: row.name,
       ...(debug && row.active !== undefined ? { active: row.active } : {}),
     }));

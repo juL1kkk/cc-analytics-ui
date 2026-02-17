@@ -398,11 +398,10 @@ export default function ContactCenterAnalyticsDashboard() {
 
     (async () => {
       try {
-        const [departments, channels, queues, topics] = await Promise.all([
+        const [departments, channels, queues] = await Promise.all([
           fetchDepartmentsV2(),
           fetchChannelsV2(),
           fetchQueuesV2(),
-          fetchTopicsV2(),
         ]);
 
         if (!alive) return;
@@ -410,14 +409,12 @@ export default function ContactCenterAnalyticsDashboard() {
         setApiDepartments(departments);
         setApiChannels(channels);
         setApiQueues(queues);
-        setApiTopics(topics);
       } catch (e) {
         if (!alive) return;
         console.warn("[UI] dictionaries/v2 failed", e);
         setApiDepartments(null);
         setApiChannels(null);
         setApiQueues(null);
-        setApiTopics(null);
       }
     })();
 
@@ -425,6 +422,34 @@ export default function ContactCenterAnalyticsDashboard() {
       alive = false;
     };
   }, [UI_DATA_SOURCE]);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const topics = await fetchTopicsV2(topicDirection);
+
+        if (!alive) return;
+
+        setApiTopics(topics);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] topics dictionary failed", e);
+        setApiTopics(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [UI_DATA_SOURCE, topicDirection]);
+
+  useEffect(() => {
+    setTopic("all");
+  }, [topicDirection]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -920,14 +945,22 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
   ]);
 
   const topicOptions = useMemo(() => {
-    if (UI_DATA_SOURCE === "API" && apiTopics != null) {
-      return mapDictionaryToOptions(apiTopics).map((item) => item.value);
+    if (UI_DATA_SOURCE === "API") {
+      if (apiTopics == null) return [] as FilterOption[];
+      return (apiTopics.items ?? [])
+        .map((item) => ({
+          value: String(item.id),
+          label: item.nameRu,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label, "ru"));
     }
 
     const s = new Set<string>();
     for (const c of filteredCalls) s.add(c.topic);
-    if (s.size === 0) return mockTopics.map((item) => item.value);
-    return Array.from(s).sort((a, b) => a.localeCompare(b));
+    if (s.size === 0) return mockTopics;
+    return Array.from(s)
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value }));
   }, [UI_DATA_SOURCE, apiTopics, filteredCalls]);
 
   const departmentOptions = useMemo(() => {
@@ -2379,31 +2412,20 @@ const goalSplit = useMemo(() => {
         <CardTitle className="text-base">Количество обращений по выбранной теме</CardTitle>
 
         <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
-          <div className="flex gap-1 rounded-lg border p-1">
-            <Button
-              type="button"
-              size="sm"
-              variant={topicDirection === "all" ? "default" : "ghost"}
-              onClick={() => setTopicDirection("all")}
+          <div className="w-full md:w-[220px]">
+            <Select
+              value={topicDirection}
+              onValueChange={(value) => setTopicDirection(value as TopicDirection)}
             >
-              Все
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={topicDirection === "in" ? "default" : "ghost"}
-              onClick={() => setTopicDirection("in")}
-            >
-              Входящие
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={topicDirection === "out" ? "default" : "ghost"}
-              onClick={() => setTopicDirection("out")}
-            >
-              Исходящие
-            </Button>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Тип обращения" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все</SelectItem>
+                <SelectItem value="in">Входящие</SelectItem>
+                <SelectItem value="out">Исходящие</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="w-full md:w-[320px]">
@@ -2413,9 +2435,9 @@ const goalSplit = useMemo(() => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Все темы</SelectItem>
-                {topicOptions.map((t: string) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
+                {topicOptions.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
                   </SelectItem>
                 ))}
               </SelectContent>
