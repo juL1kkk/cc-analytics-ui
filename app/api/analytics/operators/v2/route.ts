@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 type ItemRow = {
   operator_id: number;
   operator_name: string;
+  operator_login: string | null;
   handled: number;
   missed: number;
   aht_sec: number | null;
@@ -61,6 +62,7 @@ export async function GET(request: Request) {
       with base as (
         select
           u.name as operator_name,
+          f.agent_login as operator_login,
           f.start_stamp,
           f.answer_stamp,
           f.billsec
@@ -74,13 +76,14 @@ export async function GET(request: Request) {
           and ($4::text is null or f.queue_code = $4)
       )
       select
-       (dense_rank() over (order by operator_name))::int as operator_id,
+       (dense_rank() over (order by operator_name, operator_login))::int as operator_id,
         operator_name,
+        operator_login,
         count(*) filter (where answer_stamp is not null)::int as handled,
         count(*) filter (where answer_stamp is null)::int as missed,
         round(avg(billsec) filter (where answer_stamp is not null))::int as aht_sec
       from base
-      group by operator_name
+      group by operator_name, operator_login
       order by handled desc, missed desc
     `;
 
@@ -145,6 +148,7 @@ export async function GET(request: Request) {
     const items = itemsRes.rows.map((r) => ({
       operatorId: Number(r.operator_id),
       operatorNameRu: r.operator_name,
+      operatorLogin: r.operator_login,
       handled: r.handled,
       missed: r.missed,
       ahtSec: r.aht_sec ?? null,
