@@ -16,21 +16,19 @@ export type QueueItem = {
   queueNameRu: string;
   total: number;
   abandonedPct: number | null;
-  waiting: number | null;
-  avgWaitSec: number | null;
-  slaPct: number | null;
+  waiting: number;
+  avgWaitSec: number;
+  slaPct: number;
 };
 
 export type QueueDepthTrendPoint = {
   t: string;
-  general?: number | null;
-  vip?: number | null;
-  antifraud?: number | null;
+  value: number;
 };
 
 export type QueuesResponse = {
   items: QueueItem[];
-  queueDepthTrend: QueueDepthTrendPoint[] | null;
+  queueDepthTrend: QueueDepthTrendPoint[];
 };
 
 function parseDateOrNull(v?: string): Date | null {
@@ -108,13 +106,13 @@ export async function getQueues(params: AnalyticsQueuesParams): Promise<QueuesRe
     queueNameRu: r.queueNameRu,
     total: Number(r.total) || 0,
     abandonedPct: r.abandonedPct === null ? null : Number(r.abandonedPct),
-    waiting: null,
-    avgWaitSec: null,
-    slaPct: null,
+    waiting: 0,
+    avgWaitSec: 0,
+    slaPct: 0,
   }));
 
   return {
     items,
-    queueDepthTrend: null,
+    queueDepthTrend: [],
   };
 }
