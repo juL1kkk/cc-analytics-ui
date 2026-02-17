@@ -35,6 +35,13 @@ export async function GET(request: Request) {
     const queue = url.searchParams.get("queue")?.trim() || null;
     const topic = url.searchParams.get("topic")?.trim() || null;
     const q = url.searchParams.get("q")?.trim() || null;
+    const directionParam = (url.searchParams.get("direction")?.trim().toLowerCase() || "all") as
+      | "in"
+      | "out"
+      | "all";
+    const direction: "in" | "out" | "all" = ["in", "out", "all"].includes(directionParam)
+      ? directionParam
+      : "all";
 
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 10), 1), 50);
 
@@ -56,35 +63,80 @@ export async function GET(request: Request) {
       }
     }
 
+    const includeIn = direction === "all" || direction === "in";
+    const includeOut = direction === "all" || direction === "out";
+
+    const topicInSql = `
+      select
+        ct.topic_id::text as topic_key,
+        coalesce(ts.name, 'Не указано') as topic_name,
+        f.billsec,
+        f.answer_stamp
+      from cc_replica."CallTopic" ct
+      join cc_replica."Call" c on c.id = ct.call_id
+      join cc_replica."FsCdr" f on f.id = c.fs_uuid
+      left join cc_replica."User" u on u.id = c.user_id
+      join cc_replica."TicketSubject" ts on ts.id = ct.topic_id
+      ${channelJoinSql}
+      where c."createdOn" >= $1::timestamp
+        and c."createdOn" <  $2::timestamp
+        and ($3::uuid is null or u.department_id = $3::uuid)
+        and ($4::uuid is null or c.queue_id = $4::uuid)
+        and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
+        and (
+          $6::text is null
+          or $6::text = 'all'
+          or ct.topic_id::text = $6::text
+          or ts.name ilike '%' || $6 || '%'
+        )
+        and ct.dictionary = 'IN'
+        and f.direction = 'inbound'
+        ${channelWhereSql}
+    `;
+
+    const topicOutSql = `
+      select
+        ct.topic_id::text as topic_key,
+        coalesce(tso.name, 'Не указано') as topic_name,
+        f.billsec,
+        f.answer_stamp
+      from cc_replica."CallTopic" ct
+      join cc_replica."Call" c on c.id = ct.call_id
+      join cc_replica."FsCdr" f on f.id = c.fs_uuid
+      left join cc_replica."User" u on u.id = c.user_id
+      join cc_replica."TicketSubjectOut" tso on tso.id = ct.topic_id
+      ${channelJoinSql}
+      where c."createdOn" >= $1::timestamp
+        and c."createdOn" <  $2::timestamp
+        and ($3::uuid is null or u.department_id = $3::uuid)
+        and ($4::uuid is null or c.queue_id = $4::uuid)
+        and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
+        and (
+          $6::text is null
+          or $6::text = 'all'
+          or ct.topic_id::text = $6::text
+          or tso.name ilike '%' || $6 || '%'
+        )
+        and ct.dictionary = 'OUT'
+        and f.direction = 'outbound'
+        ${channelWhereSql}
+    `;
+
+    const topicUnionSql = [includeIn ? topicInSql : null, includeOut ? topicOutSql : null]
+      .filter(Boolean)
+      .join(" union all ");
+
     const topSql = `
-      with base as (
-        select
-          coalesce(ts.name, 'Не указано') as topic_name,
-          c.fs_uuid
-        from cc_replica."Call" c
-        left join cc_replica."User" u on u.id = c.user_id
-        left join cc_replica."TicketSubject" ts on ts.id = c."ticketSubject_id"
-        ${channelJoinSql}
-        where c."createdOn" >= $1::timestamp
-          and c."createdOn" <  $2::timestamp
-          and ($3::uuid is null or u.department_id = $3::uuid)
-          and ($4::uuid is null or c.queue_id = $4::uuid)
-          and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
-          and (
-            $6::text is null
-            or $6::text = 'all'
-            or c."ticketSubject_id" = $6::uuid
-          )
-          ${channelWhereSql}
+      with topic_rows as (
+        ${topicUnionSql || "select null::text as topic_key, null::text as topic_name, null::int as billsec, null::timestamp as answer_stamp where false"}
       )
       select
-        (dense_rank() over (order by topic_name))::int as topic_id,
-        topic_name,
+        (dense_rank() over (order by tr.topic_name))::int as topic_id,
+        tr.topic_name,
         count(*)::int as cnt,
-        round(avg(f.billsec))::int as avg_handle_sec
-      from base b
-      left join cc_replica."FsCdr" f on f.id = b.fs_uuid
-      group by topic_name
+        round(avg(case when tr.answer_stamp is not null then tr.billsec end))::int as avg_handle_sec
+      from topic_rows tr
+      group by tr.topic_name
       order by cnt desc
       limit $${params.length + 1}
     `;
@@ -102,11 +154,6 @@ export async function GET(request: Request) {
         and ($3::uuid is null or u.department_id = $3::uuid)
         and ($4::uuid is null or c.queue_id = $4::uuid)
         and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
-        and (
-          $6::text is null
-          or $6::text = 'all'
-          or c."ticketSubject_id" = $6::uuid
-        )
         ${channelWhereSql}
       group by 1
       order by value desc
@@ -114,22 +161,19 @@ export async function GET(request: Request) {
 
     const goalSql = `
       select
-        coalesce(tso.name, tso.code, 'Не указано') as name_ru,
+        tr.name as name_ru,
         count(*)::float as value
-      from cc_replica."Call" c
+      from cc_replica."CallResult" cr
+      join cc_replica."TicketResult" tr on tr.id = cr."ticketResult_id"
+      join cc_replica."Call" c on c.id = cr.call_id
+      join cc_replica."FsCdr" f on f.id = c.fs_uuid
       left join cc_replica."User" u on u.id = c.user_id
-      join cc_replica."TicketSubjectOut" tso on tso.id = c."ticketSubjectOut_id"
       ${channelJoinSql}
       where c."createdOn" >= $1::timestamp
         and c."createdOn" <  $2::timestamp
         and ($3::uuid is null or u.department_id = $3::uuid)
         and ($4::uuid is null or c.queue_id = $4::uuid)
         and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
-        and (
-          $6::text is null
-          or $6::text = 'all'
-          or c."ticketSubject_id" = $6::uuid
-        )
         ${channelWhereSql}
       group by 1
       order by value desc
@@ -174,6 +218,7 @@ export async function GET(request: Request) {
               goalSql,
               params,
               limit,
+              direction,
               channel,
               channelIsUuid,
             },
