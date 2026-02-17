@@ -329,6 +329,16 @@ function mapDictionaryToOptions(apiResp: { items?: DictionaryOptionSource[] }): 
     .filter((item): item is FilterOption => item !== null);
 }
 
+type ApiChannelResponseTrendPoint = {
+  t: string;
+  voice?: number;
+  chat?: number;
+  email?: number;
+  sms?: number;
+  push?: number;
+  value?: number;
+};
+
 export default function ContactCenterAnalyticsDashboard() {
   const [period, setPeriod] = useState<Period>("today");
   const [channel, setChannel] = useState<Channel>("all");
@@ -356,6 +366,7 @@ export default function ContactCenterAnalyticsDashboard() {
     responseSec: number | null;
   }[] | null
  >(null);
+  const [apiChannelResponseTrend, setApiChannelResponseTrend] = useState<ApiChannelResponseTrendPoint[] | null>(null);
 
   const [apiTimeSeries, setApiTimeSeries] = useState<TimeseriesPointV2[] | null>(null);
   const [apiSentiment, setApiSentiment] = useState<SentimentV2Response | null>(null);
@@ -578,7 +589,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [UI_DATA_SOURCE, period]);
+  }, [UI_DATA_SOURCE, period, dept, channel, queue, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -1545,22 +1556,39 @@ const goalSplit = useMemo(() => {
 
   (async () => {
     try {
-      const res = await fetchChannelsSplitV2({ period });
+      const res = await fetchChannelsSplitV2({
+        period,
+        ...(dept !== "Все отделы" ? { dept } : {}),
+        ...(channel !== "all" ? { channel } : {}),
+        ...(queue !== "all" ? { queue } : {}),
+        ...(query ? { q: query } : {}),
+      });
       if (!alive) return;
       setApiChannelSplit(res.split ?? []);
+      setApiChannelResponseTrend(res.responseTrend ?? []);
     } catch (e) {
       if (!alive) return;
       console.warn("[UI] channels/split/v2 failed", e);
       setApiChannelSplit(null);
+      setApiChannelResponseTrend(null);
     }
   })();
 
   return () => {
     alive = false;
   };
-  }, [UI_DATA_SOURCE, period]);
+  }, [UI_DATA_SOURCE, period, dept, channel, queue, query]);
 
   const channelVolumes = useMemo(() => {
+  if (UI_DATA_SOURCE === "API") {
+    return (apiChannelSplit ?? []).map((item) => ({
+      name: item.channelNameRu,
+      incoming: item.incoming,
+      outgoing: item.outgoing,
+      responseSec: item.responseSec ?? 0,
+    }));
+  }
+
   const map = new Map<
     string,
     { incoming: number; responseSum: number; cnt: number }
@@ -1600,10 +1628,31 @@ const goalSplit = useMemo(() => {
     outgoing: Math.round(v.incoming * 0.15), // условная доля исходящих
     responseSec: v.cnt ? Math.round(v.responseSum / v.cnt) : 0,
   }));
-}, [filteredCalls]);
+}, [UI_DATA_SOURCE, apiChannelSplit, filteredCalls]);
 
 
   const channelResponseTrendTab = useMemo(() => {
+    if (UI_DATA_SOURCE === "API") {
+      const src = apiChannelResponseTrend ?? [];
+      return src.map((row) => {
+        if (channelTab === "all") {
+          return {
+            t: row.t,
+            voice: row.voice ?? 0,
+            chat: row.chat ?? 0,
+            email: row.email ?? 0,
+            sms: row.sms ?? 0,
+            push: row.push ?? 0,
+          };
+        }
+
+        return {
+          t: row.t,
+          value: row[channelTab] ?? row.value ?? 0,
+        };
+      });
+    }
+
     const hours = ["09", "10", "11", "12", "13", "14", "15", "16", "17"];
     const map = new Map<
       string,
@@ -1670,7 +1719,7 @@ const goalSplit = useMemo(() => {
         value: cur.valueCnt ? Math.round(cur.valueSum / cur.valueCnt) : 0,
       };
     });
-  }, [channelTabCalls, channelTab]);
+  }, [UI_DATA_SOURCE, apiChannelResponseTrend, channelTabCalls, channelTab]);
 
 
 
