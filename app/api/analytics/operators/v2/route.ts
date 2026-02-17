@@ -34,9 +34,18 @@ export async function GET(request: Request) {
 
     const deptRaw = url.searchParams.get("dept")?.trim() || null;
     const queueRaw = url.searchParams.get("queue")?.trim() || null;
+    const operatorIdRaw = url.searchParams.get("operatorId")?.trim() || null;
+    const operatorRaw = url.searchParams.get("operator")?.trim() || null;
 
     const dept = deptRaw && deptRaw !== "all" && isUuid(deptRaw) ? deptRaw : null;
     const queueId = queueRaw && queueRaw !== "all" && isUuid(queueRaw) ? queueRaw : null;
+    const operatorId =
+      operatorIdRaw &&
+      operatorIdRaw !== "all" &&
+      /^\d+$/.test(operatorIdRaw)
+        ? Number(operatorIdRaw)
+        : null;
+    const operator = operatorRaw && operatorRaw !== "all" ? operatorRaw : null;
 
     // queue_code нужен для FsCdr; если queueId задан — берём code из справочника Queues
     let queueCode: string | null = null;
@@ -76,6 +85,38 @@ export async function GET(request: Request) {
     `;
 
     const trendSql = `
+      with operator_map as (
+        select
+          (dense_rank() over (order by om.operator_name, om.agent_login))::int as operator_id,
+          om.agent_login
+        from (
+          select distinct
+            f.agent_login,
+            u.name as operator_name
+          from cc_replica."FsCdr" f
+          join cc_replica."Call" c on c.fs_uuid = f.id
+          join cc_replica."User" u on u.id = c.user_id
+          where f.start_stamp >= $1::timestamptz
+            and f.start_stamp <  $2::timestamptz
+            and f.direction = 'inbound'
+            and ($3::uuid is null or u.department_id = $3::uuid)
+            and ($4::text is null or f.queue_code = $4)
+            and f.agent_login is not null
+        ) om
+      ),
+      selected_operator as (
+        select
+          case
+            when $5::int is not null then (
+              select m.agent_login
+              from operator_map m
+              where m.operator_id = $5::int
+              limit 1
+            )
+            when $6::text is not null then $6::text
+            else null
+          end as agent_login
+      )
       select
         date_trunc('hour', f.start_stamp) as t,
         round(avg(f.billsec) filter (where f.answer_stamp is not null))::int as aht_sec
@@ -87,11 +128,15 @@ export async function GET(request: Request) {
         and f.direction = 'inbound'
         and ($3::uuid is null or u.department_id = $3::uuid)
         and ($4::text is null or f.queue_code = $4)
+        and (
+          (select so.agent_login from selected_operator so) is null
+          or f.agent_login = (select so.agent_login from selected_operator so)
+        )
       group by 1
       order by 1 asc
     `;
 
-    const params = [from, to, dept, queueCode];
+    const params = [from, to, dept, queueCode, operatorId, operator];
 
     const itemsRes = await query<ItemRow>(itemsSql, params);
     const trendRes = await query<TrendRow>(trendSql, params);
