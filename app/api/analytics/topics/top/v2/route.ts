@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { resolveV2PeriodRange } from "@/lib/periodRange";
+import { isUuid } from "@/lib/isUuid";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,6 @@ type SplitRow = {
   value: number;
 };
 
-
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
@@ -30,35 +30,52 @@ export async function GET(request: Request) {
       fallbackFrom: new Date(Date.now() - 7 * 24 * 3600 * 1000),
     });
 
-    const dept = url.searchParams.get("dept")?.trim() || null;       // uuid
-    const channel = url.searchParams.get("channel")?.trim() || null; // uuid
-    const queue = url.searchParams.get("queue")?.trim() || null;     // uuid
-    const topic = url.searchParams.get("topic")?.trim() || null;     // uuid | all
+    const dept = url.searchParams.get("dept")?.trim() || null;
+    const channel = url.searchParams.get("channel")?.trim() || null;
+    const queue = url.searchParams.get("queue")?.trim() || null;
+    const topic = url.searchParams.get("topic")?.trim() || null;
     const q = url.searchParams.get("q")?.trim() || null;
 
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 10), 1), 50);
 
+    const params: Array<string | Date | null> = [from, to, dept, queue, q, topic];
+    const channelIsUuid = isUuid(channel);
+
+    let channelJoinSql = "";
+    let channelWhereSql = "";
+
+    if (channel) {
+      params.push(channel);
+      const channelParamPos = params.length;
+
+      if (channelIsUuid) {
+        channelWhereSql = `and c.channel_id = $${channelParamPos}::uuid`;
+      } else {
+        channelJoinSql = `join cc_replica."Channel" ch_filter on ch_filter.id = c.channel_id`;
+        channelWhereSql = `and ch_filter.code = $${channelParamPos}::text`;
+      }
+    }
+
     const topSql = `
       with base as (
         select
-          coalesce(ts.name, tso.name, 'Не указано') as topic_name,
+          coalesce(ts.name, 'Не указано') as topic_name,
           c.fs_uuid
         from cc_replica."Call" c
         left join cc_replica."User" u on u.id = c.user_id
         left join cc_replica."TicketSubject" ts on ts.id = c."ticketSubject_id"
-        left join cc_replica."TicketSubjectOut" tso on tso.id = c."ticketSubjectOut_id"
+        ${channelJoinSql}
         where c."createdOn" >= $1::timestamp
           and c."createdOn" <  $2::timestamp
           and ($3::uuid is null or u.department_id = $3::uuid)
-          and ($4::uuid is null or c.channel_id = $4::uuid)
-          and ($5::uuid is null or c.queue_id = $5::uuid)
-          and ($6::text is null or c."requestNum" ilike '%' || $6 || '%')
+          and ($4::uuid is null or c.queue_id = $4::uuid)
+          and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
           and (
-            $7::text is null
-            or $7::text = 'all'
-            or c."ticketSubject_id" = $7::uuid
-            or c."ticketSubjectOut_id" = $7::uuid
+            $6::text is null
+            or $6::text = 'all'
+            or c."ticketSubject_id" = $6::uuid
           )
+          ${channelWhereSql}
       )
       select
         (dense_rank() over (order by topic_name))::int as topic_id,
@@ -69,7 +86,7 @@ export async function GET(request: Request) {
       left join cc_replica."FsCdr" f on f.id = b.fs_uuid
       group by topic_name
       order by cnt desc
-      limit $8
+      limit $${params.length + 1}
     `;
 
     const splitSql = `
@@ -79,48 +96,48 @@ export async function GET(request: Request) {
       from cc_replica."Call" c
       left join cc_replica."User" u on u.id = c.user_id
       left join cc_replica."Channel" ch on ch.id = c.channel_id
+      ${channelJoinSql}
       where c."createdOn" >= $1::timestamp
         and c."createdOn" <  $2::timestamp
         and ($3::uuid is null or u.department_id = $3::uuid)
-        and ($4::uuid is null or c.channel_id = $4::uuid)
-        and ($5::uuid is null or c.queue_id = $5::uuid)
-        and ($6::text is null or c."requestNum" ilike '%' || $6 || '%')
+        and ($4::uuid is null or c.queue_id = $4::uuid)
+        and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
         and (
-          $7::text is null
-          or $7::text = 'all'
-          or c."ticketSubject_id" = $7::uuid
-          or c."ticketSubjectOut_id" = $7::uuid
+          $6::text is null
+          or $6::text = 'all'
+          or c."ticketSubject_id" = $6::uuid
         )
+        ${channelWhereSql}
       group by 1
       order by value desc
     `;
 
     const goalSql = `
       select
-        count(*) filter (where cs.code = 'callCenterSolved')::int as solved,
-        count(*) filter (where cs.code in ('callCenterNotSolved', 'identificationFailed'))::int as escalated
+        coalesce(tso.name, tso.code, 'Не указано') as name_ru,
+        count(*)::float as value
       from cc_replica."Call" c
       left join cc_replica."User" u on u.id = c.user_id
-      left join cc_replica."CallStatus" cs on cs.id = c."callStatus_id"
+      join cc_replica."TicketSubjectOut" tso on tso.id = c."ticketSubjectOut_id"
+      ${channelJoinSql}
       where c."createdOn" >= $1::timestamp
         and c."createdOn" <  $2::timestamp
         and ($3::uuid is null or u.department_id = $3::uuid)
-        and ($4::uuid is null or c.channel_id = $4::uuid)
-        and ($5::uuid is null or c.queue_id = $5::uuid)
-        and ($6::text is null or c."requestNum" ilike '%' || $6 || '%')
+        and ($4::uuid is null or c.queue_id = $4::uuid)
+        and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
         and (
-          $7::text is null
-          or $7::text = 'all'
-          or c."ticketSubject_id" = $7::uuid
-          or c."ticketSubjectOut_id" = $7::uuid
+          $6::text is null
+          or $6::text = 'all'
+          or c."ticketSubject_id" = $6::uuid
         )
+        ${channelWhereSql}
+      group by 1
+      order by value desc
     `;
-
-    const params = [from, to, dept, channel, queue, q, topic];
 
     const topRes = await query<TopRow>(topSql, [...params, limit]);
     const splitRes = await query<SplitRow>(splitSql, params);
-    const goalRes = await query<{ solved: number; escalated: number }>(goalSql, params);
+    const goalRes = await query<SplitRow>(goalSql, params);
 
     const topTopics = topRes.rows.map((r) => ({
       topicId: Number(r.topic_id),
@@ -135,17 +152,10 @@ export async function GET(request: Request) {
       value: r.value,
     }));
 
-    const goalRow = goalRes.rows[0];
-    const goalSplit = [
-      {
-        nameRu: "Решено",
-        value: goalRow?.solved ?? 0,
-      },
-      {
-        nameRu: "Эскалация",
-        value: goalRow?.escalated ?? 0,
-      },
-    ];
+    const goalSplit = goalRes.rows.map((r) => ({
+      nameRu: r.name_ru,
+      value: r.value,
+    }));
 
     const body = {
       topTopics,
@@ -155,7 +165,20 @@ export async function GET(request: Request) {
     };
 
     return NextResponse.json(
-      debug ? { ...body, debug: { topSql, splitSql, goalSql, params, limit } } : body,
+      debug
+        ? {
+            ...body,
+            debug: {
+              topSql,
+              splitSql,
+              goalSql,
+              params,
+              limit,
+              channel,
+              channelIsUuid,
+            },
+          }
+        : body,
     );
   } catch (error) {
     console.error("topics top v2 error", error);
