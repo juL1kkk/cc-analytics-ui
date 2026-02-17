@@ -33,7 +33,6 @@ export async function GET(request: Request) {
     const dept = url.searchParams.get("dept")?.trim() || null;
     const channel = url.searchParams.get("channel")?.trim() || null;
     const queue = url.searchParams.get("queue")?.trim() || null;
-    const topic = url.searchParams.get("topic")?.trim() || null;
     const q = url.searchParams.get("q")?.trim() || null;
     const directionParam = (url.searchParams.get("direction")?.trim().toLowerCase() || "all") as
       | "in"
@@ -45,7 +44,7 @@ export async function GET(request: Request) {
 
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 10), 1), 50);
 
-    const params: Array<string | Date | null> = [from, to, dept, queue, q, topic];
+    const params: Array<string | Date | null> = [from, to, dept, queue, q];
     const channelIsUuid = isUuid(channel);
 
     let channelJoinSql = "";
@@ -83,12 +82,6 @@ export async function GET(request: Request) {
         and ($3::uuid is null or u.department_id = $3::uuid)
         and ($4::uuid is null or c.queue_id = $4::uuid)
         and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
-        and (
-          $6::text is null
-          or $6::text = 'all'
-          or ct.topic_id::text = $6::text
-          or ts.name ilike '%' || $6 || '%'
-        )
         and ct.dictionary = 'IN'
         and f.direction = 'inbound'
         ${channelWhereSql}
@@ -111,12 +104,6 @@ export async function GET(request: Request) {
         and ($3::uuid is null or u.department_id = $3::uuid)
         and ($4::uuid is null or c.queue_id = $4::uuid)
         and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
-        and (
-          $6::text is null
-          or $6::text = 'all'
-          or ct.topic_id::text = $6::text
-          or tso.name ilike '%' || $6 || '%'
-        )
         and ct.dictionary = 'OUT'
         and f.direction = 'outbound'
         ${channelWhereSql}
@@ -138,7 +125,7 @@ export async function GET(request: Request) {
       from topic_rows tr
       group by tr.topic_name
       order by cnt desc
-      limit $${params.length + 1}
+      limit $${params.length + 1}::int
     `;
 
     const splitSql = `
