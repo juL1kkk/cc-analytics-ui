@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { resolveV2PeriodRange } from "@/lib/periodRange";
+import { isUuid } from "@/lib/isUuid";
 
 export const runtime = "nodejs";
 
@@ -31,8 +32,11 @@ export async function GET(request: Request) {
       fallbackFrom: new Date(Date.now() - 7 * 24 * 3600 * 1000),
     });
 
-    const dept = url.searchParams.get("dept")?.trim() || null;      // uuid
-    const queueId = url.searchParams.get("queue")?.trim() || null;  // uuid (Queues.id)
+    const deptRaw = url.searchParams.get("dept")?.trim() || null;
+    const queueRaw = url.searchParams.get("queue")?.trim() || null;
+
+    const dept = deptRaw && deptRaw !== "all" && isUuid(deptRaw) ? deptRaw : null;
+    const queueId = queueRaw && queueRaw !== "all" && isUuid(queueRaw) ? queueRaw : null;
 
     // queue_code нужен для FsCdr; если queueId задан — берём code из справочника Queues
     let queueCode: string | null = null;
