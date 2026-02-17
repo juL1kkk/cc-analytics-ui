@@ -385,6 +385,8 @@ export default function ContactCenterAnalyticsDashboard() {
     Array<{ name: string; count: number; avgHandleSec: number; fcrPct: number }> | null
   >(null);
   const [apiTopicsTs, setApiTopicsTs] = useState<TopicsTimeseriesResponseV2 | null>(null);
+  const [apiTopicsTsLoading, setApiTopicsTsLoading] = useState<boolean>(false);
+  const [apiTopicsTsError, setApiTopicsTsError] = useState<string | null>(null);
   const [apiAgentStateSummary, setApiAgentStateSummary] = useState<AgentStateSummaryV2 | null>(null);
   const [apiDepartments, setApiDepartments] = useState<DepartmentsDictionaryResponseV2 | null>(null);
   const [apiChannels, setApiChannels] = useState<ChannelsDictionaryResponseV2 | null>(null);
@@ -575,6 +577,8 @@ export default function ContactCenterAnalyticsDashboard() {
     let alive = true;
 
     (async () => {
+      setApiTopicsTsLoading(true);
+      setApiTopicsTsError(null);
       try {
         const data = await fetchTopicsTimeseriesV2({
           period,
@@ -592,6 +596,10 @@ export default function ContactCenterAnalyticsDashboard() {
         if (!alive) return;
         console.warn("[UI] topics/timeseries/v2 failed", e);
         setApiTopicsTs(null);
+        setApiTopicsTsError(e instanceof Error ? e.message : "Unknown error");
+      } finally {
+        if (!alive) return;
+        setApiTopicsTsLoading(false);
       }
     })();
 
@@ -1114,6 +1122,12 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     return { t, solved: v.solved, unsolved: v.unsolved };
   });
 }, [UI_DATA_SOURCE, apiTopicsTs, filteredCalls, topic]);
+
+  const isApiTopicsTsEmpty =
+    UI_DATA_SOURCE === "API" &&
+    !apiTopicsTsLoading &&
+    !apiTopicsTsError &&
+    (apiTopicsTs?.items?.length ?? 0) === 0;
 
 const kpis = useMemo(() => {
   if (UI_DATA_SOURCE === "API" && apiKpis) {
@@ -2448,31 +2462,45 @@ const goalSplit = useMemo(() => {
     </CardHeader>
 
     <CardContent className="h-[320px]">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={topicTimeSeries} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="t" />
-          <YAxis allowDecimals={false} />
-          <Tooltip />
-          <Legend />
-          <Line
-            type="monotone"
-            dataKey="solved"
-            name="Решенные"
-            stroke="#22c55e"
-            strokeWidth={2}
-            dot={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="unsolved"
-            name="Не решенные"
-            stroke="#dc2626"
-            strokeWidth={2}
-            dot={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+      {apiTopicsTsLoading ? (
+        <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+          Загрузка…
+        </div>
+      ) : apiTopicsTsError ? (
+        <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+          Не удалось загрузить данные
+        </div>
+      ) : isApiTopicsTsEmpty ? (
+        <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+          Нет данных за выбранный период / фильтры
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={topicTimeSeries} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="t" />
+            <YAxis allowDecimals={false} />
+            <Tooltip />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey="solved"
+              name="Решенные"
+              stroke="#22c55e"
+              strokeWidth={2}
+              dot={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="unsolved"
+              name="Не решенные"
+              stroke="#dc2626"
+              strokeWidth={2}
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
     </CardContent>
   </Card>
 
