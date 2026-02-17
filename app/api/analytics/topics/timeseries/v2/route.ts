@@ -45,12 +45,12 @@ export async function GET(request: Request) {
       : "all";
 
     const dept = url.searchParams.get("dept")?.trim() || null;
-    const channelRaw = url.searchParams.get("channel")?.trim() || null;
+    const channelRaw = (url.searchParams.get("channel") ?? "").trim();
     const queueRaw = url.searchParams.get("queue")?.trim() || null;
     const q = url.searchParams.get("q")?.trim() || null;
 
-    const channelId = channelRaw && isUuid(channelRaw) ? channelRaw : null;
-    const channelCode = channelRaw && !isUuid(channelRaw) ? channelRaw.toLowerCase() : null;
+    const channelId = isUuid(channelRaw) ? channelRaw : null;
+    const channelCode = channelRaw && !channelId ? channelRaw.toLowerCase() : null;
 
     let queueCodeFilter: string | null = null;
     if (queueRaw) {
