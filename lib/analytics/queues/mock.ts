@@ -5,6 +5,6 @@ export async function getQueues(
 ): Promise<QueuesResponse> {
   return {
     items: [],
-    queueDepthTrend: null,
+    queueDepthTrend: [],
   };
 }
