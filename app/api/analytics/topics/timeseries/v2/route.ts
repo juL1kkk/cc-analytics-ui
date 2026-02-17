@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { resolveV2PeriodRange } from "@/lib/periodRange";
 
 export const runtime = "nodejs";
 
@@ -9,26 +10,6 @@ type Row = {
   missed: number;
 };
 
-function parseDate(v: string | null) {
-  if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function periodToRange(period: string | null) {
-  const now = new Date();
-  const end = now;
-  const start = new Date(now);
-  if (period === "today") start.setHours(0, 0, 0, 0);
-  else if (period === "yesterday") {
-    start.setDate(start.getDate() - 1);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(0, 0, 0, 0);
-  } else if (period === "7d") start.setDate(start.getDate() - 7);
-  else if (period === "30d") start.setDate(start.getDate() - 30);
-  else return null;
-  return { from: start, to: end };
-}
 
 export async function GET(request: Request) {
   try {
@@ -44,12 +25,12 @@ export async function GET(request: Request) {
     }
 
     const period = url.searchParams.get("period");
-    const fromQ = parseDate(url.searchParams.get("from"));
-    const toQ = parseDate(url.searchParams.get("to"));
-    const range = periodToRange(period);
-
-    const from = fromQ ?? range?.from ?? new Date(Date.now() - 7 * 24 * 3600 * 1000);
-    const to = toQ ?? range?.to ?? new Date();
+    const { from, to } = await resolveV2PeriodRange({
+      period,
+      from: url.searchParams.get("from"),
+      to: url.searchParams.get("to"),
+      fallbackFrom: new Date(Date.now() - 7 * 24 * 3600 * 1000),
+    });
 
     const dept = url.searchParams.get("dept")?.trim() || null;       // uuid
     const channel = url.searchParams.get("channel")?.trim() || null; // uuid
