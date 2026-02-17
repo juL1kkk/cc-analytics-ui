@@ -40,7 +40,11 @@ export type FetchOperatorsV2Params = {
 export async function fetchOperatorsV2(
   filters: FetchOperatorsV2Params
 ): Promise<OperatorsResponseV2> {
-  const q = toQuery(filters);
+  const { operator, ...restFilters } = filters;
+  const q = toQuery({
+    ...restFilters,
+    ...(operator && operator !== "all" ? { operator } : {}),
+  });
   const res = await fetch(`/api/analytics/operators/v2${q ? `?${q}` : ""}`, {
     method: "GET",
     cache: "no-store",

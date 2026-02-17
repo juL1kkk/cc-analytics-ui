@@ -591,7 +591,7 @@ export default function ContactCenterAnalyticsDashboard() {
           ...(channel !== "all" ? { channel } : {}),
           ...(queue !== "all" ? { queue } : {}),
           ...(topic !== "all" ? { topic } : {}),
-          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
+          operator: selectedOperator,
           ...(query ? { q: query } : {}),
           limit: 20,
           offset: 0,
