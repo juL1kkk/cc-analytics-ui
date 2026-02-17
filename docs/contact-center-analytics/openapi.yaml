@@ -706,6 +706,13 @@ paths:
       summary: Эмоциональный фон (v2, cc_replica)
       description: Аналитика поверх схемы cc_replica  
       operationId: getSentimentV2
+      parameters:
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/channel'
+        - $ref: '#/components/parameters/queue'
+        - $ref: '#/components/parameters/q'
       responses:
         '200':
           description: Donut-распределение эмоционального фона
