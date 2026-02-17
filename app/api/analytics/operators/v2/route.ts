@@ -136,10 +136,11 @@ export async function GET(request: Request) {
       order by 1 asc
     `;
 
-    const params = [from, to, dept, queueCode, operatorId, operator];
+    const itemsParams = [from, to, dept, queueCode];
+    const trendParams = [from, to, dept, queueCode, operatorId, operator];
 
-    const itemsRes = await query<ItemRow>(itemsSql, params);
-    const trendRes = await query<TrendRow>(trendSql, params);
+    const itemsRes = await query<ItemRow>(itemsSql, itemsParams);
+    const trendRes = await query<TrendRow>(trendSql, trendParams);
 
     const items = itemsRes.rows.map((r) => ({
       operatorId: Number(r.operator_id),
@@ -157,7 +158,11 @@ export async function GET(request: Request) {
     }));
 
     const body = { items, trend };
-    return NextResponse.json(debug ? { ...body, debug: { itemsSql, trendSql, params } } : body);
+    return NextResponse.json(
+      debug
+        ? { ...body, debug: { itemsSql, trendSql, itemsParams, trendParams } }
+        : body,
+    );
   } catch (error) {
     console.error("operators v2 error", error);
 
