@@ -105,7 +105,7 @@ export async function GET(request: Request) {
     const dataRes = await query<Row>(sql, [...params, limit, offset]);
     const items = dataRes.rows.map((r) => ({
       externalId: r.external_id ?? "",
-      startedAt: r.started_at,
+      startedAt: r.started_at ? new Date(r.started_at).toISOString() : null,
       channelCode: r.channel_code ?? "voice",
       channelNameRu: r.channel_name ?? r.channel_code ?? "Звонки",
       queueCode: r.queue_code ?? "",
