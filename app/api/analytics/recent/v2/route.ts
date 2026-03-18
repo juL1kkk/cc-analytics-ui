@@ -95,6 +95,8 @@ export async function GET(request: Request) {
       select count(*)::int as total
       from cc_replica."Call" c
       left join cc_replica."User" u on u.id = c.user_id
+      left join cc_replica."FsCdr" f
+        on f.id = c.fs_uuid
       where ${whereSql}
     `;
 
