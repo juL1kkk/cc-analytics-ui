@@ -14,6 +14,7 @@ type Row = {
   dept_name: string | null;
   operator_name: string | null;
   topic_name: string | null;
+  duration_sec: number | null;
 };
 
 
@@ -68,12 +69,14 @@ export async function GET(request: Request) {
           when ct.dictionary = 'IN' then ts.name
           when ct.dictionary = 'OUT' then tso.name
           else null
-        end as topic_name
+        end as topic_name,
+        f.billsec as duration_sec
       from cc_replica."Call" c
       left join cc_replica."Channel" ch on ch.id = c.channel_id
       left join cc_replica."Queues" q2 on q2.id = c.queue_id
       left join cc_replica."User" u on u.id = c.user_id
       left join cc_replica."Department" d on d.id = u.department_id
+      left join cc_replica."FsCdr" f on f.id = c.fs_uuid
       left join cc_replica."CallTopic" ct
         on ct.call_id = c.id
        and ct.is_primary = true
@@ -111,7 +114,7 @@ export async function GET(request: Request) {
       departmentNameRu: r.dept_name ?? "",
       operatorNameRu: r.operator_name ?? null,
       topicNameRu: r.topic_name ?? null,
-      durationSec: 0,
+      durationSec: r.duration_sec ?? 0,
       statusCode: "completed",
       statusRu: "Завершён",
     }));
