@@ -75,7 +75,8 @@ export async function GET(request: Request) {
       left join cc_replica."Queues" q2 on q2.id = c.queue_id
       left join cc_replica."User" u on u.id = c.user_id
       left join cc_replica."Department" d on d.id = u.department_id
-      left join cc_replica."FsCdr" f on f.id = c.fs_uuid
+      left join cc_replica."FsCdr" f
+        on f.id = c.fs_uuid
       left join cc_replica."CallTopic" ct
         on ct.call_id = c.id
        and ct.is_primary = true
