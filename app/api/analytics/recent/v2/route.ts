@@ -75,7 +75,8 @@ export async function GET(request: Request) {
       left join cc_replica."Queues" q2 on q2.id = c.queue_id
       left join cc_replica."User" u on u.id = c.user_id
       left join cc_replica."Department" d on d.id = u.department_id
-      left join cc_replica."FsCdr" f on f.id = c.fs_uuid
+      left join cc_replica."FsCdr" f
+        on f.id = c.fs_uuid
       left join cc_replica."CallTopic" ct
         on ct.call_id = c.id
        and ct.is_primary = true
@@ -105,7 +106,7 @@ export async function GET(request: Request) {
     const dataRes = await query<Row>(sql, [...params, limit, offset]);
     const items = dataRes.rows.map((r) => ({
       externalId: r.external_id ?? "",
-      startedAt: r.started_at,
+      startedAt: r.started_at ? new Date(r.started_at).toISOString() : null,
       channelCode: r.channel_code ?? "voice",
       channelNameRu: r.channel_name ?? r.channel_code ?? "Звонки",
       queueCode: r.queue_code ?? "",
