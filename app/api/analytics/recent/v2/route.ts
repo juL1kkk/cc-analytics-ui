@@ -46,8 +46,8 @@ export async function GET(request: Request) {
     const offset = toInt(url.searchParams.get("offset"), 0, 0, 1_000_000);
 
     const whereSql = `
-      c."createdOn" >= $1::timestamp
-      and c."createdOn" <  $2::timestamp
+      f.start_stamp >= $1::timestamptz
+      and f.start_stamp <  $2::timestamptz
       and ($3::uuid is null or c.channel_id = $3::uuid)
       and ($4::uuid is null or c.queue_id = $4::uuid)
       and ($5::uuid is null or u.department_id = $5::uuid)
@@ -87,7 +87,7 @@ export async function GET(request: Request) {
         on tso.id = ct.topic_id
        and ct.dictionary = 'OUT'
       where ${whereSql}
-      order by c."createdOn" desc
+      order by f.start_stamp desc
       limit $7 offset $8
     `;
 
