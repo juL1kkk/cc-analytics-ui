@@ -64,14 +64,25 @@ export async function GET(request: Request) {
         q2.name as queue_name,
         d.name as dept_name,
         u.name as operator_name,
-        coalesce(ts.name, tso.name) as topic_name
+        case
+          when ct.dictionary = 'IN' then ts.name
+          when ct.dictionary = 'OUT' then tso.name
+          else null
+        end as topic_name
       from cc_replica."Call" c
       left join cc_replica."Channel" ch on ch.id = c.channel_id
       left join cc_replica."Queues" q2 on q2.id = c.queue_id
       left join cc_replica."User" u on u.id = c.user_id
       left join cc_replica."Department" d on d.id = u.department_id
-      left join cc_replica."TicketSubject" ts on ts.id = c."ticketSubject_id"
-      left join cc_replica."TicketSubjectOut" tso on tso.id = c."ticketSubjectOut_id"
+      left join cc_replica."CallTopic" ct
+        on ct.call_id = c.id
+       and ct.is_primary = true
+      left join cc_replica."TicketSubject" ts
+        on ts.id = ct.topic_id
+       and ct.dictionary = 'IN'
+      left join cc_replica."TicketSubjectOut" tso
+        on tso.id = ct.topic_id
+       and ct.dictionary = 'OUT'
       where ${whereSql}
       order by c."createdOn" desc
       limit $7 offset $8
@@ -93,7 +104,7 @@ export async function GET(request: Request) {
     const items = dataRes.rows.map((r) => ({
       externalId: r.external_id ?? "",
       startedAt: new Date(r.started_at).toISOString(),
-      channelCode: (r.channel_code ?? "voice") as any,
+      channelCode: r.channel_code ?? "voice",
       channelNameRu: r.channel_name ?? r.channel_code ?? "Звонки",
       queueCode: r.queue_code ?? "",
       queueNameRu: r.queue_name ?? r.queue_code ?? "",
