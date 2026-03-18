@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 type Row = {
   external_id: string | null;
-  started_at: string;
+  started_at: string | null;
   channel_code: string | null;
   channel_name: string | null;
   queue_code: string | null;
@@ -16,7 +16,6 @@ type Row = {
   topic_name: string | null;
   duration_sec: number | null;
 };
-
 
 function toInt(v: string | null, def: number, min: number, max: number) {
   const n = Number(v ?? "");
@@ -38,9 +37,9 @@ export async function GET(request: Request) {
     });
 
     // В v2 фильтры uuid (по связям Call)
-    const dept = url.searchParams.get("dept")?.trim() || null;     // department_id uuid
+    const dept = url.searchParams.get("dept")?.trim() || null; // department_id uuid
     const channel = url.searchParams.get("channel")?.trim() || null; // channel_id uuid
-    const queue = url.searchParams.get("queue")?.trim() || null;     // queue_id uuid
+    const queue = url.searchParams.get("queue")?.trim() || null; // queue_id uuid
     const q = url.searchParams.get("q")?.trim() || null;
 
     const limit = toInt(url.searchParams.get("limit"), 50, 1, 200);
@@ -58,7 +57,7 @@ export async function GET(request: Request) {
     const sql = `
       select
         c."requestNum" as external_id,
-        c."createdOn" as started_at,
+        f.start_stamp as started_at,
         ch.code as channel_code,
         ch.name as channel_name,
         q2.code as queue_code,
@@ -106,7 +105,7 @@ export async function GET(request: Request) {
     const dataRes = await query<Row>(sql, [...params, limit, offset]);
     const items = dataRes.rows.map((r) => ({
       externalId: r.external_id ?? "",
-      startedAt: new Date(r.started_at).toISOString(),
+      startedAt: r.started_at,
       channelCode: r.channel_code ?? "voice",
       channelNameRu: r.channel_name ?? r.channel_code ?? "Звонки",
       queueCode: r.queue_code ?? "",
