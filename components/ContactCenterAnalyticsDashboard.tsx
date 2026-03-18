@@ -227,7 +227,11 @@ const GOAL_COLORS: Record<string, string> = {
 function mapRecentToUi(apiResp: RecentV2Response): CallRow[] {
   return (apiResp.items ?? []).map((r) => ({
       id: `C-${r.externalId}`,
-      startedAt: new Date(r.startedAt).toISOString().slice(11, 16),
+      startedAt: new Date(r.startedAt).toLocaleTimeString("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }),
       channel: r.channelCode,
       queue:
         r.queueCode === "general" || r.queueCode === "1"
