@@ -1993,8 +1993,22 @@ const goalSplit = useMemo(() => {
                           <YAxis />
                           <Tooltip />
                           <Legend />
-                          <Line type="monotone" dataKey="incoming" name="Входящие" strokeWidth={2} dot={false} />
-                          <Line type="monotone" dataKey="missed" name="Пропущенные" strokeWidth={2} dot={false} />
+                          <Line
+                            type="monotone"
+                            dataKey="incoming"
+                            name="Входящие"
+                            stroke="#3B82F6"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="missed"
+                            name="Пропущенные"
+                            stroke="#EF4444"
+                            strokeWidth={2}
+                            dot={false}
+                          />
                         </LineChart>
                       </ResponsiveContainer>
                     </CardContent>
