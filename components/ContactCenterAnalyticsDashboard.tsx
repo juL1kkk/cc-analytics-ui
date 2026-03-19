@@ -1196,7 +1196,10 @@ const kpiCards = useMemo(() => {
     },
     {
       title: "Нагрузка операторов",
-      value: `${operatorsOnCalls} / 44`,
+      value:
+        UI_DATA_SOURCE === "API" && apiAgentStateSummary
+          ? `${apiAgentStateSummary.onLine} / ${apiAgentStateSummary.total}`
+          : `${operatorsOnCalls} / 44`,
       icon: Users,
       note: "уникальных / всего",
       delta: 0,
@@ -1209,7 +1212,7 @@ const kpiCards = useMemo(() => {
       delta: 0,
     },
   ];
-}, [filteredCalls, kpis]);
+}, [filteredCalls, kpis, apiAgentStateSummary]);
 
 
 
