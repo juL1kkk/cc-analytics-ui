@@ -7,7 +7,6 @@ export const runtime = "nodejs";
 type CallsAggRow = {
   queue_code: string;
   queue_name: string;
-  total: number;
 };
 
 type CdrAggRow = {
@@ -60,8 +59,7 @@ export async function GET(request: Request) {
     const callsSql = `
       select
         q2.code as queue_code,
-        q2.name as queue_name,
-        count(c.id)::int as total
+        q2.name as queue_name
       from cc_replica."Queues" q2
       left join cc_replica."Call" c on c.queue_id = q2.id
       left join cc_replica."User" u on u.id = c.user_id
@@ -73,7 +71,7 @@ export async function GET(request: Request) {
           and ($5::text is null or c."requestNum" ilike '%' || $5 || '%')
         ))
       group by q2.code, q2.name
-      order by total desc
+      order by q2.name asc
     `;
 
     const callsParams = [queueId, from, to, dept, q];
@@ -199,7 +197,7 @@ export async function GET(request: Request) {
       return {
         queueCode: r.queue_code,
         queueNameRu: r.queue_name,
-        total: r.total,
+        total: inboundTotal,
         abandonedPct,
         waiting: cdr?.waiting ?? 0,
         avgWaitSec: cdr?.avg_wait_sec ?? 0,
