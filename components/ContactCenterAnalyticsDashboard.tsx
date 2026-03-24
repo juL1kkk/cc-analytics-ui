@@ -352,6 +352,17 @@ type ApiChannelResponseTrendPoint = {
   value?: number;
 };
 
+type QueuesAnalyticsResponseV2 = {
+  items?: Array<{
+    queueNameRu: string;
+    total: number;
+    abandonedPct: number | null;
+    waiting: number;
+    avgWaitSec: number;
+    slaPct: number;
+  }>;
+};
+
 export default function ContactCenterAnalyticsDashboard() {
   const [period, setPeriod] = useState<Period>("today");
   const [channel, setChannel] = useState<Channel>("all");
@@ -381,6 +392,7 @@ export default function ContactCenterAnalyticsDashboard() {
   }[] | null
  >(null);
   const [apiChannelResponseTrend, setApiChannelResponseTrend] = useState<ApiChannelResponseTrendPoint[] | null>(null);
+  const [apiQueuesV2, setApiQueuesV2] = useState<QueuesAnalyticsResponseV2 | null>(null);
 
   const [apiTimeSeries, setApiTimeSeries] = useState<TimeseriesPointV2[] | null>(null);
   const [apiSentiment, setApiSentiment] = useState<SentimentV2Response | null>(null);
@@ -396,6 +408,39 @@ export default function ContactCenterAnalyticsDashboard() {
   const [apiChannels, setApiChannels] = useState<ChannelsDictionaryResponseV2 | null>(null);
   const [apiQueues, setApiQueues] = useState<QueuesDictionaryResponseV2 | null>(null);
   const [apiTopics, setApiTopics] = useState<TopicsDictionaryResponseV2 | null>(null);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const params = new URLSearchParams({ period });
+        if (dept !== "Все отделы") params.set("dept", dept);
+        if (queue !== "all") params.set("queue", queue);
+        if (query) params.set("q", query);
+
+        const res = await fetch(`/api/analytics/queues/v2?${params.toString()}`, {
+          cache: "no-store",
+        });
+
+        if (!res.ok) throw new Error(`queues/v2 failed: ${res.status}`);
+        const data = (await res.json()) as QueuesAnalyticsResponseV2;
+
+        if (!alive) return;
+        setApiQueuesV2(data);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] analytics/queues/v2 failed", e);
+        setApiQueuesV2(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [UI_DATA_SOURCE, period, dept, queue, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -1544,6 +1589,16 @@ const goalSplit = useMemo(() => {
 
 
   const queueStats = useMemo(() => {
+  if (UI_DATA_SOURCE === "API" && apiQueuesV2?.items) {
+    return apiQueuesV2.items.map((item) => ({
+      name: item.queueNameRu,
+      waiting: item.waiting,
+      avgWaitSec: item.avgWaitSec,
+      slaPct: item.slaPct,
+      abandonedPct: item.abandonedPct ?? 0,
+    }));
+  }
+
   const map = new Map<
     string,
     { total: number; missed: number; sumWait: number }
@@ -1594,7 +1649,7 @@ const goalSplit = useMemo(() => {
       abandonedPct,
     };
   });
-}, [filteredCalls]);
+}, [UI_DATA_SOURCE, apiQueuesV2, filteredCalls]);
 
 
   const queueDepthTrend = useMemo(
