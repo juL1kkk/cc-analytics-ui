@@ -320,6 +320,16 @@ function formatTrendTimeLabel(rawTime: string) {
   return parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatQueueDepthLocalHour(rawTime: string) {
+  const parsed = new Date(rawTime);
+  if (Number.isNaN(parsed.getTime())) return rawTime;
+  return parsed.toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 function normalizeTopicName(value: string | null | undefined) {
   if (!value) return "Не указано";
   const v = value.trim();
@@ -430,6 +440,7 @@ export default function ContactCenterAnalyticsDashboard() {
         if (dept !== "Все отделы") params.set("dept", dept);
         if (queue !== "all") params.set("queue", queue);
         if (query) params.set("q", query);
+        params.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
 
         const res = await fetch(`/api/analytics/queues/v2?${params.toString()}`, {
           cache: "no-store",
@@ -1666,7 +1677,7 @@ const goalSplit = useMemo(() => {
     () => {
       if (UI_DATA_SOURCE === "API" && apiQueuesV2?.queueDepthTrend) {
         return apiQueuesV2.queueDepthTrend.map((row) => ({
-          t: formatTrendTimeLabel(row.t),
+          t: formatQueueDepthLocalHour(row.t),
           incoming: row.value ?? 0,
           value: row.value ?? 0,
         }));
@@ -2367,9 +2378,9 @@ const goalSplit = useMemo(() => {
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={queueDepthTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="t" />
+                          <XAxis dataKey="t" tickFormatter={(value) => String(value)} />
                           <YAxis allowDecimals={false} />
-                          <Tooltip />
+                          <Tooltip labelFormatter={(label) => String(label)} />
                           <Legend />
                           <Line
                             type="monotone"
