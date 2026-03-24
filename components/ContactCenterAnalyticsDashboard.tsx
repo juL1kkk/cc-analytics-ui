@@ -320,6 +320,16 @@ function formatTrendTimeLabel(rawTime: string) {
   return parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatQueueDepthLocalHour(rawTime: string) {
+  const parsed = new Date(rawTime);
+  if (Number.isNaN(parsed.getTime())) return rawTime;
+  return parsed.toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 function normalizeTopicName(value: string | null | undefined) {
   if (!value) return "Не указано";
   const v = value.trim();
@@ -1666,7 +1676,7 @@ const goalSplit = useMemo(() => {
     () => {
       if (UI_DATA_SOURCE === "API" && apiQueuesV2?.queueDepthTrend) {
         return apiQueuesV2.queueDepthTrend.map((row) => ({
-          t: formatTrendTimeLabel(row.t),
+          t: formatQueueDepthLocalHour(row.t),
           incoming: row.value ?? 0,
           value: row.value ?? 0,
         }));

@@ -176,7 +176,7 @@ export async function GET(request: Request) {
         s.t::text as t,
         count(*) filter (
           where b.start_stamp < (s.t + interval '1 hour')
-            and (b.queue_exit_ts is null or b.queue_exit_ts >= (s.t + interval '1 hour'))
+            and (b.queue_exit_ts is null or b.queue_exit_ts >= s.t)
         )::int as value
       from series s
       left join base b on true
