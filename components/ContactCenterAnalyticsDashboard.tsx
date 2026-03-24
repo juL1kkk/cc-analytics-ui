@@ -980,13 +980,12 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     return filteredCalls.filter((c) => c.operator === selectedOperator);
   }, [UI_DATA_SOURCE, filteredCalls, selectedOperator]);
 
-  const queueCalls = useMemo(
-    () =>
-      selectedQueue === "all"
-        ? filteredCalls
-        : filteredCalls.filter((c) => c.queue === selectedQueue),
-    [filteredCalls, selectedQueue]
-  );
+  const queueCalls = useMemo(() => {
+    if (UI_DATA_SOURCE === "API") return [] as CallRow[];
+    return selectedQueue === "all"
+      ? filteredCalls
+      : filteredCalls.filter((c) => c.queue === selectedQueue);
+  }, [UI_DATA_SOURCE, filteredCalls, selectedQueue]);
 
   const channelTabCalls = useMemo(() => {
     if (channelTab === "all") return filteredCalls;
@@ -1628,6 +1627,7 @@ const goalSplit = useMemo(() => {
     const items = apiQueuesV2?.items ?? [];
     return items.map((item) => ({
       name: item.queueNameRu,
+      total: item.total,
       waiting: item.waiting,
       avgWaitSec: item.avgWaitSec,
       slaPct: item.slaPct,
@@ -1679,6 +1679,7 @@ const goalSplit = useMemo(() => {
           : queue === "vip"
           ? "VIP"
           : "Антифрод",
+      total: v.total,
       waiting: Math.round(v.total * 0.08), // приблизительно в очереди
       avgWaitSec: avgWait,
       slaPct,
@@ -1694,8 +1695,7 @@ const goalSplit = useMemo(() => {
         const trend = apiQueuesV2?.queueDepthTrend ?? [];
         return trend.map((row) => ({
           t: formatQueueDepthLocalHour(row.t),
-          incoming: row.value ?? 0,
-          value: row.value ?? 0,
+          queueDepth: row.value ?? 0,
         }));
       }
 
@@ -1714,7 +1714,7 @@ const goalSplit = useMemo(() => {
 
       return hours.map((h) => ({
         t: `${h}:00`,
-        incoming: map.get(`${h}:00`) ?? 0,
+        queueDepth: map.get(`${h}:00`) ?? 0,
       }));
     },
     [UI_DATA_SOURCE, apiQueuesV2, queueCalls]
@@ -2340,7 +2340,7 @@ const goalSplit = useMemo(() => {
                             <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
                               {queueStats.map((q) => (
                                 <Badge key={q.name} variant="outline">
-                                  {q.name}: в очереди {q.waiting}
+                                  {q.name}: всего {q.total}, в очереди {q.waiting}
                                 </Badge>
                               ))}
                             </div>
@@ -2415,7 +2415,7 @@ const goalSplit = useMemo(() => {
                             <Legend />
                             <Line
                               type="monotone"
-                              dataKey="incoming"
+                              dataKey="queueDepth"
                               name={selectedQueueLabel}
                               strokeWidth={2}
                               dot={false}
