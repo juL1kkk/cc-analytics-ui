@@ -981,14 +981,6 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
       .map((operator) => ({ label: operator, value: operator }));
   }, [UI_DATA_SOURCE, apiOperators, filteredCalls]);
 
-  const queueOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const c of filteredCalls) s.add(c.queue);
-    return Array.from(s).sort((a, b) =>
-      queueLabel(a as Queue).localeCompare(queueLabel(b as Queue), "ru")
-    );
-  }, [filteredCalls]);
-
   const operatorFilteredCalls = useMemo(() => {
     if (selectedOperator === "all") return filteredCalls;
     if (UI_DATA_SOURCE === "API") return filteredCalls;
@@ -2388,9 +2380,9 @@ const goalSplit = useMemo(() => {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="all">Все</SelectItem>
-                              {queueOptions.map((queueOption) => (
-                                <SelectItem key={queueOption} value={queueOption}>
-                                  {queueLabel(queueOption as Queue)}
+                              {queueSelectOptions.map((queueOption) => (
+                                <SelectItem key={queueOption.value} value={queueOption.value}>
+                                  {queueOption.label}
                                 </SelectItem>
                               ))}
                             </SelectContent>
