@@ -314,6 +314,12 @@ function mapGoalToUi(apiResp: Array<{ nameRu: string; value: number }> | null) {
   ];
 }
 
+function formatTrendTimeLabel(rawTime: string) {
+  const parsed = new Date(rawTime);
+  if (Number.isNaN(parsed.getTime())) return rawTime;
+  return parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 function normalizeTopicName(value: string | null | undefined) {
   if (!value) return "Не указано";
   const v = value.trim();
@@ -360,6 +366,10 @@ type QueuesAnalyticsResponseV2 = {
     waiting: number;
     avgWaitSec: number;
     slaPct: number;
+  }>;
+  queueDepthTrend?: Array<{
+    t: string;
+    value: number;
   }>;
 };
 
@@ -1654,6 +1664,14 @@ const goalSplit = useMemo(() => {
 
   const queueDepthTrend = useMemo(
     () => {
+      if (UI_DATA_SOURCE === "API" && apiQueuesV2?.queueDepthTrend) {
+        return apiQueuesV2.queueDepthTrend.map((row) => ({
+          t: formatTrendTimeLabel(row.t),
+          incoming: row.value ?? 0,
+          value: row.value ?? 0,
+        }));
+      }
+
       const hours = ["09", "10", "11", "12", "13", "14", "15"];
       const map = new Map<string, number>();
 
@@ -1672,7 +1690,7 @@ const goalSplit = useMemo(() => {
         incoming: map.get(`${h}:00`) ?? 0,
       }));
     },
-    [queueCalls]
+    [UI_DATA_SOURCE, apiQueuesV2, queueCalls]
   );
 
   useEffect(() => {
@@ -2302,7 +2320,7 @@ const goalSplit = useMemo(() => {
 
                     <Card className="rounded-2xl">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-base">Потери: доля брошенных</CardTitle>
+                        <CardTitle className="text-base">Потери: доля пропущенных</CardTitle>
                       </CardHeader>
                       <CardContent className="h-[280px]">
                         <ResponsiveContainer width="100%" height="100%">
@@ -2312,7 +2330,7 @@ const goalSplit = useMemo(() => {
                             <YAxis allowDecimals={false} />
                             <Tooltip />
                             <Legend />
-                            <Bar dataKey="abandonedPct" name="Брошенные (%)" radius={[10, 10, 0, 0]} />
+                            <Bar dataKey="abandonedPct" name="Пропущенные (%)" radius={[10, 10, 0, 0]} />
                           </BarChart>
                         </ResponsiveContainer>
                       </CardContent>
