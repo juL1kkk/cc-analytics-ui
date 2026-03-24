@@ -211,14 +211,6 @@ const queueLabel = (value: string, options?: FilterOption[]) => {
   return value;
 };
 
-const resolveQueueFilterParam = (value: string, isApiSource: boolean): string => {
-  if (isApiSource) return value;
-  if (value === "general") return "1";
-  if (value === "vip") return "2";
-  if (value === "antifraud") return "3";
-  return value;
-};
-
 const COLORS = ["#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb", "#f3f4f6"]; // neutral palette
 
 const SENTIMENT_COLORS: Record<string, string> = {
@@ -395,7 +387,7 @@ type QueuesAnalyticsResponseV2 = {
 export default function ContactCenterAnalyticsDashboard() {
   const [period, setPeriod] = useState<Period>("today");
   const [channel, setChannel] = useState<Channel>("all");
-  const [queue, setQueue] = useState<string>("all");
+  const [selectedQueue, setSelectedQueue] = useState<string>("all");
   const [dept, setDept] = useState<string>("Все отделы");
   const [query, setQuery] = useState<string>("");
   const [tab, setTab] = useState<string>("overview");
@@ -447,8 +439,7 @@ export default function ContactCenterAnalyticsDashboard() {
       try {
         const params = new URLSearchParams({ period });
         if (dept !== "Все отделы") params.set("dept", dept);
-        if (queue !== "all")
-          params.set("queue", resolveQueueFilterParam(queue, UI_DATA_SOURCE === "API"));
+        if (selectedQueue !== "all") params.set("queue", selectedQueue);
         if (query) params.set("q", query);
         params.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
 
@@ -471,7 +462,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [UI_DATA_SOURCE, period, dept, queue, query]);
+  }, [UI_DATA_SOURCE, period, dept, selectedQueue, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -544,7 +535,7 @@ export default function ContactCenterAnalyticsDashboard() {
           period,
           ...(dept !== "Все отделы" ? { dept } : {}),
           ...(channel !== "all" ? { channel } : {}),
-          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
           ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
           ...(topic !== "all" ? { topic } : {}),
           ...(query ? { q: query } : {}),
@@ -561,7 +552,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [UI_DATA_SOURCE, period, dept, channel, queue, selectedOperator, topic, query]);
+  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, selectedOperator, topic, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -573,7 +564,7 @@ export default function ContactCenterAnalyticsDashboard() {
         const data = await fetchAgentStateSummaryV2({
           period,
           ...(dept !== "Все отделы" ? { dept } : {}),
-          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
         });
         if (!alive) return;
         setApiAgentStateSummary(data);
@@ -587,7 +578,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [UI_DATA_SOURCE, period, dept, queue]);
+  }, [UI_DATA_SOURCE, period, dept, selectedQueue]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -600,7 +591,7 @@ export default function ContactCenterAnalyticsDashboard() {
           period,
           ...(dept !== "Все отделы" ? { dept } : {}),
           ...(channel !== "all" ? { channel } : {}),
-          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
           ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
           ...(topic !== "all" ? { topic } : {}),
           ...(query ? { q: query } : {}),
@@ -617,7 +608,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [UI_DATA_SOURCE, period, dept, channel, queue, selectedOperator, topic, query]);
+  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, selectedOperator, topic, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -631,7 +622,7 @@ export default function ContactCenterAnalyticsDashboard() {
           period,
           ...(dept !== "Все отделы" ? { dept } : {}),
           ...(channel !== "all" ? { channel } : {}),
-          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
           ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
           ...(topic !== "all" ? { topic } : {}),
           ...(query ? { q: query } : {}),
@@ -649,7 +640,7 @@ export default function ContactCenterAnalyticsDashboard() {
       alive = false;
       controller.abort();
     };
-  }, [UI_DATA_SOURCE, period, dept, channel, queue, selectedOperator, topic, query]);
+  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, selectedOperator, topic, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -665,7 +656,7 @@ export default function ContactCenterAnalyticsDashboard() {
           bucket: "hour",
           ...(dept !== "Все отделы" ? { dept } : {}),
           ...(channel !== "all" ? { channel } : {}),
-          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
           ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
           topic,
           ...(query ? { q: query } : {}),
@@ -686,7 +677,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [period, dept, channel, queue, selectedOperator, topic, query]);
+  }, [period, dept, channel, selectedQueue, selectedOperator, topic, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -698,7 +689,7 @@ export default function ContactCenterAnalyticsDashboard() {
           direction: topicDirection,
           ...(dept !== "Все отделы" ? { dept } : {}),
           ...(channel !== "all" ? { channel } : {}),
-          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
           ...(query ? { q: query } : {}),
         });
         if (!alive) return;
@@ -719,7 +710,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [UI_DATA_SOURCE, period, topicDirection, dept, channel, queue, query]);
+  }, [UI_DATA_SOURCE, period, topicDirection, dept, channel, selectedQueue, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -730,7 +721,7 @@ export default function ContactCenterAnalyticsDashboard() {
           period,
           ...(dept !== "Все отделы" ? { dept } : {}),
           ...(channel !== "all" ? { channel } : {}),
-          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
           ...(topic !== "all" ? { topic } : {}),
           operator: selectedOperator,
           ...(query ? { q: query } : {}),
@@ -748,7 +739,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [UI_DATA_SOURCE, period, dept, channel, queue, topic, selectedOperator, query]);
+  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, topic, selectedOperator, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -761,7 +752,7 @@ export default function ContactCenterAnalyticsDashboard() {
           period,
           ...(dept !== "Все отделы" ? { dept } : {}),
           ...(channel !== "all" ? { channel } : {}),
-          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
           ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
           ...(topic !== "all" ? { topic } : {}),
           ...(query ? { q: query } : {}),
@@ -778,7 +769,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [period, dept, channel, queue, selectedOperator, topic, query]);
+  }, [period, dept, channel, selectedQueue, selectedOperator, topic, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -791,7 +782,7 @@ export default function ContactCenterAnalyticsDashboard() {
           period,
           ...(dept !== "Все отделы" ? { dept } : {}),
           ...(channel !== "all" ? { channel } : {}),
-          ...(queue !== "all" ? { queue } : {}),
+          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
           ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
           ...(topic !== "all" ? { topic } : {}),
           ...(query ? { q: query } : {}),
@@ -810,7 +801,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [UI_DATA_SOURCE, period, dept, channel, queue, selectedOperator, topic, query]);
+  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, selectedOperator, topic, query]);
 
   const calls: CallRow[] = useMemo(() => {
   const result: CallRow[] = [];
@@ -955,7 +946,7 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     const q = query.trim().toLowerCase();
     return calls.filter((r) => {
       if (channel !== "all" && r.channel !== channel) return false;
-      if (queue !== "all" && r.queue !== queue) return false;
+      if (selectedQueue !== "all" && r.queue !== selectedQueue) return false;
       if (dept !== "Все отделы" && r.dept !== dept) return false;
       if (!q) return true;
       return (
@@ -964,7 +955,7 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
         r.topic.toLowerCase().includes(q)
       );
     });
-  }, [calls, channel, queue, dept, query]);
+  }, [calls, channel, selectedQueue, dept, query]);
 
   const operatorOptions = useMemo(() => {
     if (UI_DATA_SOURCE === "API" && apiOperators?.items?.length) {
@@ -991,10 +982,10 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
 
   const queueCalls = useMemo(
     () =>
-      queue === "all"
+      selectedQueue === "all"
         ? filteredCalls
-        : filteredCalls.filter((c) => c.queue === queue),
-    [filteredCalls, queue]
+        : filteredCalls.filter((c) => c.queue === selectedQueue),
+    [filteredCalls, selectedQueue]
   );
 
   const channelTabCalls = useMemo(() => {
@@ -1008,8 +999,8 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     }
 
     // === MOCK mode: как было ===
-    if (tab === "queues" && queue !== "all") {
-      return filteredCalls.filter((c) => c.queue === queue);
+    if (tab === "queues" && selectedQueue !== "all") {
+      return filteredCalls.filter((c) => c.queue === selectedQueue);
     }
     if (tab === "channels") {
       return channelTabCalls.slice(0, 10);
@@ -1019,7 +1010,7 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     UI_DATA_SOURCE,
     apiRecent,
     tab,
-    queue,
+    selectedQueue,
     filteredCalls,
     channelTabCalls,
   ]);
@@ -1059,10 +1050,31 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
 
   const queueSelectOptions = useMemo(() => {
     if (UI_DATA_SOURCE === "API" && apiQueues != null) {
-      return mapDictionaryToOptions(apiQueues);
+      return (apiQueues.items ?? [])
+        .map((item) => {
+          const label = item.nameRu ?? item.name ?? item.label;
+          const value =
+            typeof item.id === "string" || typeof item.id === "number"
+              ? String(item.id)
+              : undefined;
+          if (!label || !value) return null;
+          return { label, value };
+        })
+        .filter((item): item is FilterOption => item !== null);
     }
     return mockQueues;
   }, [UI_DATA_SOURCE, apiQueues]);
+
+  const selectedQueueLabel = useMemo(() => {
+    if (selectedQueue === "all") return "Все очереди";
+    if (UI_DATA_SOURCE === "API") {
+      return (
+        queueSelectOptions.find((item) => item.value === selectedQueue)?.label ??
+        selectedQueue
+      );
+    }
+    return queueLabel(selectedQueue, queueSelectOptions);
+  }, [UI_DATA_SOURCE, selectedQueue, queueSelectOptions]);
 
   const topicCalls = useMemo(
     () =>
@@ -1719,7 +1731,7 @@ const goalSplit = useMemo(() => {
         period,
         ...(dept !== "Все отделы" ? { dept } : {}),
         ...(channel !== "all" ? { channel } : {}),
-        ...(queue !== "all" ? { queue } : {}),
+        ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
         ...(query ? { q: query } : {}),
       });
       if (!alive) return;
@@ -1736,7 +1748,7 @@ const goalSplit = useMemo(() => {
   return () => {
     alive = false;
   };
-  }, [UI_DATA_SOURCE, period, dept, channel, queue, query]);
+  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, query]);
 
   const channelVolumes = useMemo(() => {
   if (UI_DATA_SOURCE === "API") {
@@ -1967,7 +1979,7 @@ const goalSplit = useMemo(() => {
             </div>
 
             <div className="md:col-span-2">
-              <Select value={queue} onValueChange={setQueue}>
+              <Select value={selectedQueue} onValueChange={setSelectedQueue}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Очередь" />
                 </SelectTrigger>
@@ -2003,7 +2015,7 @@ const goalSplit = useMemo(() => {
                 <Badge variant="outline">Период: {period === "today" ? "Сегодня" : period === "yesterday" ? "Вчера" : period === "7d" ? "7 дней" : period === "30d" ? "30 дней" : "Произвольный"}</Badge>
                 <Badge variant="outline">Отдел: {dept}</Badge>
                 <Badge variant="outline">Канал: {channel === "all" ? "Все" : channel}</Badge>
-                <Badge variant="outline">Очередь: {queueLabel(queue, queueSelectOptions)}</Badge>
+                <Badge variant="outline">Очередь: {selectedQueueLabel}</Badge>
               </div>
             </div>
           </div>
@@ -2372,11 +2384,11 @@ const goalSplit = useMemo(() => {
                         <div>
                           <CardTitle className="text-base">Динамика длины очередей</CardTitle>
                           <div className="text-xs text-muted-foreground">
-                            Фильтр: {queueLabel(queue, queueSelectOptions)}
+                            Фильтр: {selectedQueueLabel}
                           </div>
                         </div>
                         <div className="w-full md:w-[220px]">
-                          <Select value={queue} onValueChange={setQueue}>
+                          <Select value={selectedQueue} onValueChange={setSelectedQueue}>
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Очередь" />
                             </SelectTrigger>
@@ -2404,7 +2416,7 @@ const goalSplit = useMemo(() => {
                             <Line
                               type="monotone"
                               dataKey="incoming"
-                              name={queueLabel(queue, queueSelectOptions)}
+                              name={selectedQueueLabel}
                               strokeWidth={2}
                               dot={false}
                             />
