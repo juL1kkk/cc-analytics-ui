@@ -27,6 +27,26 @@ type QueueCodeRow = {
   code: string;
 };
 
+function parseTimezoneOffsetMinutes(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return null;
+  if (parsed < -840 || parsed > 840) return null;
+  return parsed;
+}
+
+function resolveUserLocalTodayRange(offsetMinutes: number): { from: Date; to: Date } {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
+  const localNowMs = nowMs - offsetMinutes * 60 * 1000;
+  const localStartMs = Math.floor(localNowMs / dayMs) * dayMs;
+  const utcStartMs = localStartMs + offsetMinutes * 60 * 1000;
+  return {
+    from: new Date(utcStartMs),
+    to: new Date(utcStartMs + dayMs),
+  };
+}
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
@@ -46,6 +66,12 @@ export async function GET(request: Request) {
 
     const slaSecRaw = Number(url.searchParams.get("slaSec") ?? "20");
     const slaSec = Number.isFinite(slaSecRaw) && slaSecRaw >= 0 ? Math.floor(slaSecRaw) : 20;
+    const tzOffsetMinutes = parseTimezoneOffsetMinutes(url.searchParams.get("tzOffsetMinutes"));
+
+    const trendRange =
+      period === "today" && tzOffsetMinutes !== null
+        ? resolveUserLocalTodayRange(tzOffsetMinutes)
+        : { from, to };
 
     let queueCodeFilter: string | null = null;
     if (queueId) {
@@ -184,7 +210,7 @@ export async function GET(request: Request) {
       order by s.t
     `;
 
-    const trendParams = [dept, queueCodeFilter, from, to];
+    const trendParams = [dept, queueCodeFilter, trendRange.from, trendRange.to];
     const trendRes = await query<TrendRow>(trendSql, trendParams);
 
     const items = callsRes.rows.map((r) => {
