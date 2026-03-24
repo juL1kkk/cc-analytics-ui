@@ -102,7 +102,7 @@ type Period = "today" | "yesterday" | "7d" | "30d" | "custom";
 type Channel = "all" | "voice" | "chat" | "email" | "sms" | "push";
 type TopicDirection = "all" | "in" | "out";
 
-type Queue = "all" | "general" | "vip" | "antifraud";
+type Queue = "general" | "vip" | "antifraud";
 
 type Dept = "Все отделы" | "Контакт-центр" | "Контроль качества" | "Антифрод";
 
@@ -201,16 +201,18 @@ function kpiDelta(delta: number) {
   return `${sign}${delta}%`;
 }
 
-const queueLabel = (value: string) =>
-  value === "general" || value === "1"
-    ? "Общая"
-    : value === "vip" || value === "2"
-    ? "VIP"
-    : value === "antifraud" || value === "3"
-    ? "Антифрод"
-    : "Все очереди";
+const queueLabel = (value: string, options?: FilterOption[]) => {
+  if (value === "all") return "Все очереди";
+  const apiOptionLabel = options?.find((item) => item.value === value)?.label;
+  if (apiOptionLabel) return apiOptionLabel;
+  if (value === "general" || value === "1") return "Общая";
+  if (value === "vip" || value === "2") return "VIP";
+  if (value === "antifraud" || value === "3") return "Антифрод";
+  return value;
+};
 
-const resolveQueueFilterParam = (value: string): string => {
+const resolveQueueFilterParam = (value: string, isApiSource: boolean): string => {
+  if (isApiSource) return value;
   if (value === "general") return "1";
   if (value === "vip") return "2";
   if (value === "antifraud") return "3";
@@ -393,7 +395,7 @@ type QueuesAnalyticsResponseV2 = {
 export default function ContactCenterAnalyticsDashboard() {
   const [period, setPeriod] = useState<Period>("today");
   const [channel, setChannel] = useState<Channel>("all");
-  const [queue, setQueue] = useState<Queue>("all");
+  const [queue, setQueue] = useState<string>("all");
   const [dept, setDept] = useState<string>("Все отделы");
   const [query, setQuery] = useState<string>("");
   const [tab, setTab] = useState<string>("overview");
@@ -445,7 +447,8 @@ export default function ContactCenterAnalyticsDashboard() {
       try {
         const params = new URLSearchParams({ period });
         if (dept !== "Все отделы") params.set("dept", dept);
-        if (queue !== "all") params.set("queue", resolveQueueFilterParam(queue));
+        if (queue !== "all")
+          params.set("queue", resolveQueueFilterParam(queue, UI_DATA_SOURCE === "API"));
         if (query) params.set("q", query);
         params.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
 
@@ -1964,7 +1967,7 @@ const goalSplit = useMemo(() => {
             </div>
 
             <div className="md:col-span-2">
-              <Select value={queue} onValueChange={(v) => setQueue(v as Queue)}>
+              <Select value={queue} onValueChange={setQueue}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Очередь" />
                 </SelectTrigger>
@@ -2000,7 +2003,7 @@ const goalSplit = useMemo(() => {
                 <Badge variant="outline">Период: {period === "today" ? "Сегодня" : period === "yesterday" ? "Вчера" : period === "7d" ? "7 дней" : period === "30d" ? "30 дней" : "Произвольный"}</Badge>
                 <Badge variant="outline">Отдел: {dept}</Badge>
                 <Badge variant="outline">Канал: {channel === "all" ? "Все" : channel}</Badge>
-                <Badge variant="outline">Очередь: {queue === "all" ? "Все" : queue}</Badge>
+                <Badge variant="outline">Очередь: {queueLabel(queue, queueSelectOptions)}</Badge>
               </div>
             </div>
           </div>
@@ -2369,11 +2372,11 @@ const goalSplit = useMemo(() => {
                         <div>
                           <CardTitle className="text-base">Динамика длины очередей</CardTitle>
                           <div className="text-xs text-muted-foreground">
-                            Фильтр: {queueLabel(queue)}
+                            Фильтр: {queueLabel(queue, queueSelectOptions)}
                           </div>
                         </div>
                         <div className="w-full md:w-[220px]">
-                          <Select value={queue} onValueChange={(v) => setQueue(v as Queue)}>
+                          <Select value={queue} onValueChange={setQueue}>
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Очередь" />
                             </SelectTrigger>
@@ -2401,7 +2404,7 @@ const goalSplit = useMemo(() => {
                             <Line
                               type="monotone"
                               dataKey="incoming"
-                              name={queueLabel(queue)}
+                              name={queueLabel(queue, queueSelectOptions)}
                               strokeWidth={2}
                               dot={false}
                             />
