@@ -388,6 +388,7 @@ export default function ContactCenterAnalyticsDashboard() {
   const [period, setPeriod] = useState<Period>("today");
   const [channel, setChannel] = useState<Channel>("all");
   const [selectedQueue, setSelectedQueue] = useState<string>("all");
+  const [queueDepthQueue, setQueueDepthQueue] = useState<string>("all");
   const [dept, setDept] = useState<string>("Все отделы");
   const [query, setQuery] = useState<string>("");
   const [tab, setTab] = useState<string>("overview");
@@ -413,6 +414,7 @@ export default function ContactCenterAnalyticsDashboard() {
  >(null);
   const [apiChannelResponseTrend, setApiChannelResponseTrend] = useState<ApiChannelResponseTrendPoint[] | null>(null);
   const [apiQueuesV2, setApiQueuesV2] = useState<QueuesAnalyticsResponseV2 | null>(null);
+  const [apiQueueDepthV2, setApiQueueDepthV2] = useState<QueuesAnalyticsResponseV2 | null>(null);
 
   const [apiTimeSeries, setApiTimeSeries] = useState<TimeseriesPointV2[] | null>(null);
   const [apiSentiment, setApiSentiment] = useState<SentimentV2Response | null>(null);
@@ -463,6 +465,41 @@ export default function ContactCenterAnalyticsDashboard() {
       alive = false;
     };
   }, [UI_DATA_SOURCE, period, dept, selectedQueue, query]);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    let alive = true;
+    setApiQueueDepthV2(null);
+
+    (async () => {
+      try {
+        const params = new URLSearchParams({ period });
+        if (dept !== "Все отделы") params.set("dept", dept);
+        if (queueDepthQueue !== "all") params.set("queue", queueDepthQueue);
+        if (query) params.set("q", query);
+        params.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
+
+        const res = await fetch(`/api/analytics/queues/v2?${params.toString()}`, {
+          cache: "no-store",
+        });
+
+        if (!res.ok) throw new Error(`queue depth queues/v2 failed: ${res.status}`);
+        const data = (await res.json()) as QueuesAnalyticsResponseV2;
+
+        if (!alive) return;
+        setApiQueueDepthV2(data);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] analytics/queues/v2 (queue depth) failed", e);
+        setApiQueueDepthV2(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [UI_DATA_SOURCE, period, dept, queueDepthQueue, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -957,6 +994,20 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     });
   }, [calls, channel, selectedQueue, dept, query]);
 
+  const filteredCallsWithoutQueue = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return calls.filter((r) => {
+      if (channel !== "all" && r.channel !== channel) return false;
+      if (dept !== "Все отделы" && r.dept !== dept) return false;
+      if (!q) return true;
+      return (
+        r.id.toLowerCase().includes(q) ||
+        r.operator.toLowerCase().includes(q) ||
+        r.topic.toLowerCase().includes(q)
+      );
+    });
+  }, [calls, channel, dept, query]);
+
   const operatorOptions = useMemo(() => {
     if (UI_DATA_SOURCE === "API" && apiOperators?.items?.length) {
       return apiOperators.items
@@ -982,10 +1033,10 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
 
   const queueCalls = useMemo(() => {
     if (UI_DATA_SOURCE === "API") return [] as CallRow[];
-    return selectedQueue === "all"
-      ? filteredCalls
-      : filteredCalls.filter((c) => c.queue === selectedQueue);
-  }, [UI_DATA_SOURCE, filteredCalls, selectedQueue]);
+    return queueDepthQueue === "all"
+      ? filteredCallsWithoutQueue
+      : filteredCallsWithoutQueue.filter((c) => c.queue === queueDepthQueue);
+  }, [UI_DATA_SOURCE, filteredCallsWithoutQueue, queueDepthQueue]);
 
   const channelTabCalls = useMemo(() => {
     if (channelTab === "all") return filteredCalls;
@@ -1074,6 +1125,17 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     }
     return queueLabel(selectedQueue, queueSelectOptions);
   }, [UI_DATA_SOURCE, selectedQueue, queueSelectOptions]);
+
+  const queueDepthQueueLabel = useMemo(() => {
+    if (queueDepthQueue === "all") return "Все очереди";
+    if (UI_DATA_SOURCE === "API") {
+      return (
+        queueSelectOptions.find((item) => item.value === queueDepthQueue)?.label ??
+        queueDepthQueue
+      );
+    }
+    return queueLabel(queueDepthQueue, queueSelectOptions);
+  }, [UI_DATA_SOURCE, queueDepthQueue, queueSelectOptions]);
 
   const topicCalls = useMemo(
     () =>
@@ -1692,7 +1754,7 @@ const goalSplit = useMemo(() => {
   const queueDepthTrend = useMemo(
     () => {
       if (UI_DATA_SOURCE === "API") {
-        const trend = apiQueuesV2?.queueDepthTrend ?? [];
+        const trend = apiQueueDepthV2?.queueDepthTrend ?? [];
         return trend.map((row) => ({
           t: formatQueueDepthLocalHour(row.t),
           queueDepth: row.value ?? 0,
@@ -1717,7 +1779,7 @@ const goalSplit = useMemo(() => {
         queueDepth: map.get(`${h}:00`) ?? 0,
       }));
     },
-    [UI_DATA_SOURCE, apiQueuesV2, queueCalls]
+    [UI_DATA_SOURCE, apiQueueDepthV2, queueCalls]
   );
 
   useEffect(() => {
@@ -2384,11 +2446,11 @@ const goalSplit = useMemo(() => {
                         <div>
                           <CardTitle className="text-base">Динамика длины очередей</CardTitle>
                           <div className="text-xs text-muted-foreground">
-                            Фильтр: {selectedQueueLabel}
+                            Фильтр: {queueDepthQueueLabel}
                           </div>
                         </div>
                         <div className="w-full md:w-[220px]">
-                          <Select value={selectedQueue} onValueChange={setSelectedQueue}>
+                          <Select value={queueDepthQueue} onValueChange={setQueueDepthQueue}>
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Очередь" />
                             </SelectTrigger>
@@ -2416,7 +2478,7 @@ const goalSplit = useMemo(() => {
                             <Line
                               type="monotone"
                               dataKey="queueDepth"
-                              name={selectedQueueLabel}
+                              name={queueDepthQueueLabel}
                               strokeWidth={2}
                               dot={false}
                             />
