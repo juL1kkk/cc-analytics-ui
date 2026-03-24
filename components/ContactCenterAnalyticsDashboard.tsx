@@ -201,14 +201,21 @@ function kpiDelta(delta: number) {
   return `${sign}${delta}%`;
 }
 
-const queueLabel = (value: Queue) =>
-  value === "general"
+const queueLabel = (value: string) =>
+  value === "general" || value === "1"
     ? "Общая"
-    : value === "vip"
+    : value === "vip" || value === "2"
     ? "VIP"
-    : value === "antifraud"
+    : value === "antifraud" || value === "3"
     ? "Антифрод"
     : "Все очереди";
+
+const resolveQueueFilterParam = (value: string): string => {
+  if (value === "general") return "1";
+  if (value === "vip") return "2";
+  if (value === "antifraud") return "3";
+  return value;
+};
 
 const COLORS = ["#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb", "#f3f4f6"]; // neutral palette
 
@@ -433,12 +440,13 @@ export default function ContactCenterAnalyticsDashboard() {
     if (UI_DATA_SOURCE !== "API") return;
 
     let alive = true;
+    setApiQueuesV2(null);
 
     (async () => {
       try {
         const params = new URLSearchParams({ period });
         if (dept !== "Все отделы") params.set("dept", dept);
-        if (queue !== "all") params.set("queue", queue);
+        if (queue !== "all") params.set("queue", resolveQueueFilterParam(queue));
         if (query) params.set("q", query);
         params.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
 
@@ -1610,8 +1618,9 @@ const goalSplit = useMemo(() => {
 
 
   const queueStats = useMemo(() => {
-  if (UI_DATA_SOURCE === "API" && apiQueuesV2?.items) {
-    return apiQueuesV2.items.map((item) => ({
+  if (UI_DATA_SOURCE === "API") {
+    const items = apiQueuesV2?.items ?? [];
+    return items.map((item) => ({
       name: item.queueNameRu,
       waiting: item.waiting,
       avgWaitSec: item.avgWaitSec,
@@ -1675,8 +1684,9 @@ const goalSplit = useMemo(() => {
 
   const queueDepthTrend = useMemo(
     () => {
-      if (UI_DATA_SOURCE === "API" && apiQueuesV2?.queueDepthTrend) {
-        return apiQueuesV2.queueDepthTrend.map((row) => ({
+      if (UI_DATA_SOURCE === "API") {
+        const trend = apiQueuesV2?.queueDepthTrend ?? [];
+        return trend.map((row) => ({
           t: formatQueueDepthLocalHour(row.t),
           incoming: row.value ?? 0,
           value: row.value ?? 0,
@@ -2307,25 +2317,33 @@ const goalSplit = useMemo(() => {
                         <CardTitle className="text-base">Очереди: SLA и ожидание</CardTitle>
                       </CardHeader>
                       <CardContent className="h-[280px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={queueStats} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis yAxisId="left" allowDecimals={false} />
-                            <YAxis yAxisId="right" orientation="right" allowDecimals={false} />
-                            <Tooltip />
-                            <Legend />
-                            <Bar yAxisId="left" dataKey="slaPct" name="SLA (%)" radius={[10, 10, 0, 0]} />
-                            <Bar yAxisId="right" dataKey="avgWaitSec" name="Среднее ожидание (сек)" radius={[10, 10, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {queueStats.map((q) => (
-                            <Badge key={q.name} variant="outline">
-                              {q.name}: в очереди {q.waiting}
-                            </Badge>
-                          ))}
-                        </div>
+                        {queueStats.length ? (
+                          <>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={queueStats} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis yAxisId="left" allowDecimals={false} />
+                                <YAxis yAxisId="right" orientation="right" allowDecimals={false} />
+                                <Tooltip />
+                                <Legend />
+                                <Bar yAxisId="left" dataKey="slaPct" name="SLA (%)" radius={[10, 10, 0, 0]} />
+                                <Bar yAxisId="right" dataKey="avgWaitSec" name="Среднее ожидание (сек)" radius={[10, 10, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                              {queueStats.map((q) => (
+                                <Badge key={q.name} variant="outline">
+                                  {q.name}: в очереди {q.waiting}
+                                </Badge>
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex h-full items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">
+                            Нет данных по очередям для выбранных фильтров.
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
 
@@ -2334,16 +2352,22 @@ const goalSplit = useMemo(() => {
                         <CardTitle className="text-base">Потери: доля пропущенных</CardTitle>
                       </CardHeader>
                       <CardContent className="h-[280px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={queueStats} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis allowDecimals={false} />
-                            <Tooltip />
-                            <Legend />
-                            <Bar dataKey="abandonedPct" name="Пропущенные (%)" radius={[10, 10, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
+                        {queueStats.length ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={queueStats} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="name" />
+                              <YAxis allowDecimals={false} />
+                              <Tooltip />
+                              <Legend />
+                              <Bar dataKey="abandonedPct" name="Пропущенные (%)" radius={[10, 10, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div className="flex h-full items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">
+                            Нет данных по потерям в очередях.
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   </div>
@@ -2375,22 +2399,28 @@ const goalSplit = useMemo(() => {
                       </div>
                     </CardHeader>
                     <CardContent className="h-[320px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={queueDepthTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="t" tickFormatter={(value) => String(value)} />
-                          <YAxis allowDecimals={false} />
-                          <Tooltip labelFormatter={(label) => String(label)} />
-                          <Legend />
-                          <Line
-                            type="monotone"
-                            dataKey="incoming"
-                            name={queueLabel(selectedQueue as Queue)}
-                            strokeWidth={2}
-                            dot={false}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
+                      {queueDepthTrend.length ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={queueDepthTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="t" tickFormatter={(value) => String(value)} />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip labelFormatter={(label) => String(label)} />
+                            <Legend />
+                            <Line
+                              type="monotone"
+                              dataKey="incoming"
+                              name={queueLabel(selectedQueue)}
+                              strokeWidth={2}
+                              dot={false}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex h-full items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">
+                          Нет данных по динамике длины очередей.
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
