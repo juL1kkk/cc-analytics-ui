@@ -400,7 +400,6 @@ export default function ContactCenterAnalyticsDashboard() {
   const [topic, setTopic] = useState<string>("all");
   const [topicDirection, setTopicDirection] = useState<TopicDirection>("all");
   const [selectedOperator, setSelectedOperator] = useState<string>("all");
-  const [selectedQueue, setSelectedQueue] = useState<string>("all");
   const [channelTab, setChannelTab] = useState<Channel>("all");
 
   
@@ -989,10 +988,10 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
 
   const queueCalls = useMemo(
     () =>
-      selectedQueue === "all"
+      queue === "all"
         ? filteredCalls
-        : filteredCalls.filter((c) => c.queue === selectedQueue),
-    [filteredCalls, selectedQueue]
+        : filteredCalls.filter((c) => c.queue === queue),
+    [filteredCalls, queue]
   );
 
   const channelTabCalls = useMemo(() => {
@@ -1006,8 +1005,8 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     }
 
     // === MOCK mode: как было ===
-    if (tab === "queues" && selectedQueue !== "all") {
-      return filteredCalls.filter((c) => c.queue === selectedQueue);
+    if (tab === "queues" && queue !== "all") {
+      return filteredCalls.filter((c) => c.queue === queue);
     }
     if (tab === "channels") {
       return channelTabCalls.slice(0, 10);
@@ -1017,7 +1016,7 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     UI_DATA_SOURCE,
     apiRecent,
     tab,
-    selectedQueue,
+    queue,
     filteredCalls,
     channelTabCalls,
   ]);
@@ -2370,11 +2369,11 @@ const goalSplit = useMemo(() => {
                         <div>
                           <CardTitle className="text-base">Динамика длины очередей</CardTitle>
                           <div className="text-xs text-muted-foreground">
-                            Фильтр: {queueLabel(selectedQueue as Queue)}
+                            Фильтр: {queueLabel(queue)}
                           </div>
                         </div>
                         <div className="w-full md:w-[220px]">
-                          <Select value={selectedQueue} onValueChange={setSelectedQueue}>
+                          <Select value={queue} onValueChange={(v) => setQueue(v as Queue)}>
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Очередь" />
                             </SelectTrigger>
@@ -2402,7 +2401,7 @@ const goalSplit = useMemo(() => {
                             <Line
                               type="monotone"
                               dataKey="incoming"
-                              name={queueLabel(selectedQueue)}
+                              name={queueLabel(queue)}
                               strokeWidth={2}
                               dot={false}
                             />
