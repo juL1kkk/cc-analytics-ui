@@ -162,21 +162,21 @@ export async function GET(request: Request) {
       base as (
         select
           f.start_stamp,
-          f.answer_stamp
+          coalesce(f.answer_stamp, f.end_stamp) as queue_exit_ts
         from cc_replica."FsCdr" f
         left join cc_replica."Call" c on c.fs_uuid = f.id
         left join cc_replica."User" u on u.id = c.user_id
         where f.direction = 'inbound'
           and ($1::uuid is null or u.department_id = $1::uuid)
           and ($2::text is null or f.queue_code = $2)
-          and f.start_stamp < ($4::timestamptz + interval '1 hour')
-          and (f.answer_stamp is null or f.answer_stamp >= $3::timestamptz)
+          and f.start_stamp >= $3::timestamptz
+          and f.start_stamp <  $4::timestamptz
       )
       select
         s.t::text as t,
         count(*) filter (
           where b.start_stamp < (s.t + interval '1 hour')
-            and (b.answer_stamp is null or b.answer_stamp >= (s.t + interval '1 hour'))
+            and (b.queue_exit_ts is null or b.queue_exit_ts >= (s.t + interval '1 hour'))
         )::int as value
       from series s
       left join base b on true
