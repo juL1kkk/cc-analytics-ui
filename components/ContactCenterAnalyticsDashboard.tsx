@@ -1486,10 +1486,10 @@ const operatorLoad = useMemo(() => {
 }, [filteredCalls]);
   const channelSplit = useMemo(() => {
     if (UI_DATA_SOURCE === "API") {
-      const split = (apiChannelSplit ?? [])
+      const split = (apiTopicsTop?.channelSplit ?? [])
         .map((item) => ({
-          name: item.channelNameRu,
-          value: item.incoming + item.outgoing,
+          name: item.nameRu,
+          value: item.value,
         }))
         .filter((item) => item.value > 0);
 
@@ -1517,7 +1517,7 @@ const operatorLoad = useMemo(() => {
       name,
       value,
     }));
-  }, [UI_DATA_SOURCE, apiChannelSplit, filteredCalls]);
+  }, [UI_DATA_SOURCE, apiTopicsTop, filteredCalls]);
 
  const sentimentSplit = useMemo(() => {
   const counts = { "Позитив": 0, "Нейтрально": 0, "Негатив": 0 };
