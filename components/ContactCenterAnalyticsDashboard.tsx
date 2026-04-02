@@ -25,9 +25,14 @@ import {
   type TimeseriesPointV2,
 } from "@/lib/analytics/timeseries/client";
 import {
+  fetchSentimentV2,
+  type SentimentV2Response,
+} from "@/lib/analytics/sentiment.client";
+import {
   fetchAgentStateSummaryV2,
   type AgentStateSummaryV2,
 } from "@/lib/analytics/agentStateSummary.client";
+import { fetchGoalSplitV2 } from "@/lib/analytics/goalSplit.client";
 import {
   fetchDepartmentsV2,
   type DepartmentsDictionaryResponseV2,
@@ -311,6 +316,35 @@ function mapOperatorsToUi(apiResp: OperatorsResponseV2) {
   };
 }
 
+function mapSentimentToUi(apiResp: SentimentV2Response) {
+  return (apiResp.items ?? [])
+    .map((item) => ({
+      name: item.nameRu,
+      value: item.value,
+    }))
+    .filter((item) => item.value > 0);
+}
+
+function mapGoalToUi(apiResp: Array<{ nameRu: string; value: number }> | null) {
+  const values = { "Решено": 0, "Эскалация": 0 };
+
+  for (const item of apiResp ?? []) {
+    const key = item.nameRu.trim().toLowerCase();
+    if (["решено", "resolved", "completed"].includes(key)) {
+      values["Решено"] += item.value;
+      continue;
+    }
+    if (["эскалация", "escalated", "escalation"].includes(key)) {
+      values["Эскалация"] += item.value;
+    }
+  }
+
+  return [
+    { name: "Решено", value: values["Решено"] },
+    { name: "Эскалация", value: values["Эскалация"] },
+  ];
+}
+
 function formatTrendTimeLabel(rawTime: string) {
   const parsed = new Date(rawTime);
   if (Number.isNaN(parsed.getTime())) return rawTime;
@@ -419,6 +453,8 @@ export default function ContactCenterAnalyticsDashboard() {
   const [apiQueueDepthV2, setApiQueueDepthV2] = useState<QueuesAnalyticsResponseV2 | null>(null);
 
   const [apiTimeSeries, setApiTimeSeries] = useState<TimeseriesPointV2[] | null>(null);
+  const [apiSentiment, setApiSentiment] = useState<SentimentV2Response | null>(null);
+  const [apiGoalSplit, setApiGoalSplit] = useState<Array<{ nameRu: string; value: number }> | null>(null);
   const [apiTopicsTop, setApiTopicsTop] = useState<
     Array<{ name: string; count: number; avgHandleSec: number; fcrPct: number }> | null
   >(null);
@@ -568,6 +604,36 @@ export default function ContactCenterAnalyticsDashboard() {
 
     (async () => {
       try {
+        const data = await fetchSentimentV2({
+          period,
+          ...(dept !== "Все отделы" ? { dept } : {}),
+          ...(channel !== "all" ? { channel } : {}),
+          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
+          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
+          ...(topic !== "all" ? { topic } : {}),
+          ...(query ? { q: query } : {}),
+        });
+        if (!alive) return;
+        setApiSentiment(data);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] sentiment/v2 failed", e);
+        setApiSentiment(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, selectedOperator, topic, query]);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    let alive = true;
+
+    (async () => {
+      try {
         const data = await fetchAgentStateSummaryV2({
           period,
           ...(dept !== "Все отделы" ? { dept } : {}),
@@ -586,6 +652,36 @@ export default function ContactCenterAnalyticsDashboard() {
       alive = false;
     };
   }, [UI_DATA_SOURCE, period, dept, selectedQueue]);
+
+  useEffect(() => {
+    if (UI_DATA_SOURCE !== "API") return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const data = await fetchGoalSplitV2({
+          period,
+          ...(dept !== "Все отделы" ? { dept } : {}),
+          ...(channel !== "all" ? { channel } : {}),
+          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
+          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
+          ...(topic !== "all" ? { topic } : {}),
+          ...(query ? { q: query } : {}),
+        });
+        if (!alive) return;
+        setApiGoalSplit(data);
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[UI] goal split source failed", e);
+        setApiGoalSplit(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, selectedOperator, topic, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -1470,30 +1566,41 @@ const operatorLoad = useMemo(() => {
  const sentimentSplit = useMemo(() => {
   const counts = { "Позитив": 0, "Нейтрально": 0, "Негатив": 0 };
 
-  for (const c of callsScopeForAnalytics) {
-    const mapped = mapCommunicationColorToSentiment(c.communicationColor);
-    if (!mapped) continue;
-    counts[mapped] += 1;
-  }
-
-  const rows = Object.entries(counts)
-    .map(([name, value]) => ({ name, value }))
-    .filter((x) => x.value > 0);
-  return rows.length ? rows : [{ name: "Нет данных", value: 1 }];
-}, [callsScopeForAnalytics]);
-
-const goalSplit = useMemo(() => {
-  const counts = { "Решено": 0, "Эскалация": 0, "Не решено": 0 };
-
-  for (const c of callsScopeForAnalytics) {
-    const mapped = mapTicketResultToGoal(c.ticketResultCode);
-    counts[mapped] += 1;
+  for (const c of filteredCalls) {
+    if (c.status === "Пропущен") counts["Негатив"] += 1;
+    else if (c.channel === "voice") counts["Нейтрально"] += 1;
+    else counts["Позитив"] += 1;
   }
 
   return Object.entries(counts)
     .map(([name, value]) => ({ name, value }))
     .filter((x) => x.value > 0);
-}, [callsScopeForAnalytics]);
+}, [filteredCalls]);
+
+ const sentimentSplitView = useMemo(() => {
+  if (UI_DATA_SOURCE === "API" && apiSentiment !== null) {
+    return mapSentimentToUi(apiSentiment);
+  }
+  return sentimentSplit;
+ }, [UI_DATA_SOURCE, apiSentiment, sentimentSplit]);
+
+const goalSplit = useMemo(() => {
+  if (UI_DATA_SOURCE === "API") {
+    return mapGoalToUi(apiGoalSplit);
+  }
+
+  const counts = { "Решено": 0, "Эскалация": 0, "Требует действий": 0 };
+
+  for (const c of filteredCalls) {
+    if (c.status === "Завершён") counts["Решено"] += 1;
+    else if (c.status === "Пропущен") counts["Эскалация"] += 1;
+    else counts["Требует действий"] += 1;
+  }
+
+  return Object.entries(counts)
+    .map(([name, value]) => ({ name, value }))
+    .filter((x) => x.value > 0);
+}, [UI_DATA_SOURCE, apiGoalSplit, filteredCalls]);
 
   const themes: Theme[] = useMemo(() => {
   const map = new Map<
@@ -2195,14 +2302,14 @@ const goalSplit = useMemo(() => {
           <Tooltip />
           <Legend />
             <Pie
-            data={sentimentSplit}
+            data={sentimentSplitView}
             dataKey="value"
             nameKey="name"
             innerRadius={55}
             outerRadius={90}
             paddingAngle={2}
           >
-            {sentimentSplit.map((entry) => (
+            {sentimentSplitView.map((entry) => (
   <Cell
     key={entry.name}
     fill={SENTIMENT_COLORS[entry.name] || "#9ca3af"}
