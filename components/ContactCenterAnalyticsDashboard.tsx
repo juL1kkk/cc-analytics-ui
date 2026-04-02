@@ -331,6 +331,20 @@ function formatQueueDepthLocalHour(rawTime: string) {
   });
 }
 
+function calculateAhtSec(calls: CallRow[]) {
+  let ahtSum = 0;
+  let ahtCnt = 0;
+
+  for (const c of calls) {
+    if (c.status === "Завершён") {
+      ahtSum += c.durationSec;
+      ahtCnt += 1;
+    }
+  }
+
+  return ahtCnt ? Math.round(ahtSum / ahtCnt) : 0;
+}
+
 function normalizeTopicName(value: string | null | undefined) {
   if (!value) return "Не указано";
   const v = value.trim();
@@ -1276,20 +1290,18 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
 
 const kpis = useMemo(() => {
   if (UI_DATA_SOURCE === "API" && apiKpis) {
-    return apiKpis;
+    const apiCalls = apiRecent ? mapRecentToUi(apiRecent) : [];
+    const recalculatedAhtSec =
+      apiCalls.length > 0 ? calculateAhtSec(apiCalls) : apiKpis.ahtSec;
+
+    return {
+      ...apiKpis,
+      ahtSec: recalculatedAhtSec,
+    };
   }
   const incoming = filteredCalls.length;
   const missed = filteredCalls.filter((c) => c.status === "Пропущен").length;
-
-  const handled = filteredCalls.filter(
-    (c) => c.status === "Завершён" && c.durationSec > 0
-  );
-
-  const ahtSec = handled.length
-    ? Math.round(
-        handled.reduce((sum, c) => sum + c.durationSec, 0) / handled.length
-      )
-    : 0;
+  const ahtSec = calculateAhtSec(filteredCalls);
 
   const completed = filteredCalls.filter(
     (c) => c.status === "Завершён"
@@ -1302,7 +1314,7 @@ const kpis = useMemo(() => {
     ahtSec,
     total: incoming,
   };
-}, [filteredCalls, apiKpis]);
+}, [UI_DATA_SOURCE, filteredCalls, apiKpis, apiRecent]);
 
 const kpiCards = useMemo(() => {
   const operatorsOnCalls = new Set(
@@ -1474,10 +1486,14 @@ const operatorLoad = useMemo(() => {
 }, [filteredCalls]);
   const channelSplit = useMemo(() => {
     if (UI_DATA_SOURCE === "API") {
-      return (apiChannelSplit ?? []).map((item) => ({
-        name: item.channelNameRu,
-        value: item.incoming + item.outgoing,
-      }));
+      const split = (apiChannelSplit ?? [])
+        .map((item) => ({
+          name: item.channelNameRu,
+          value: item.incoming + item.outgoing,
+        }))
+        .filter((item) => item.value > 0);
+
+      return split.length ? split : [{ name: "Нет данных", value: 1 }];
     }
 
     const map = new Map<string, number>();
