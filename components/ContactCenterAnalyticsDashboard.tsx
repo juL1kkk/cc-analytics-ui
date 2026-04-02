@@ -231,25 +231,6 @@ const GOAL_COLORS: Record<string, string> = {
   "Требует действий": "#f59e0b", // на будущее
 };
 
-function mapCommunicationColorToSentiment(
-  color: string | null | undefined
-): "Позитив" | "Нейтрально" | "Негатив" | null {
-  const normalized = String(color ?? "").trim().toLowerCase();
-  if (normalized === "green") return "Позитив";
-  if (normalized === "yellow") return "Нейтрально";
-  if (normalized === "red") return "Негатив";
-  return null;
-}
-
-function mapTicketResultToGoal(
-  code: string | null | undefined
-): "Решено" | "Эскалация" | "Не решено" {
-  const normalized = String(code ?? "").trim().toLowerCase();
-  if (normalized === "resolved") return "Решено";
-  if (normalized === "escalation") return "Эскалация";
-  return "Не решено";
-}
-
 function mapRecentToUi(apiResp: RecentV2Response): CallRow[] {
   return (apiResp.items ?? []).map((r) => ({
       id: `C-${r.externalId}`,
@@ -1254,45 +1235,6 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
       ],
     };
   }, [UI_DATA_SOURCE, apiTopicsTop, topic, topicCalls]);
-
-  const topicSentimentSplit = useMemo(() => {
-    if (!topicCalls.length) {
-      return [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
-    }
-
-    const counts = { "Позитив": 0, "Нейтрально": 0, "Негатив": 0 };
-    for (const c of topicCalls) {
-      const mapped = mapCommunicationColorToSentiment(c.communicationColor);
-      if (!mapped) continue;
-      counts[mapped] += 1;
-    }
-
-    const rows = Object.entries(counts)
-      .map(([name, value]) => ({
-        name,
-        value,
-        color: SENTIMENT_COLORS[name],
-      }))
-      .filter((x) => x.value > 0);
-
-    return rows.length ? rows : [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
-  }, [topicCalls]);
-
-  const topicGoalSplit = useMemo(() => {
-    if (!topicCalls.length) {
-      return [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
-    }
-
-    const counts = { "Решено": 0, "Эскалация": 0, "Не решено": 0 };
-    for (const c of topicCalls) {
-      const mapped = mapTicketResultToGoal(c.ticketResultCode);
-      counts[mapped] += 1;
-    }
-
-    return Object.entries(counts)
-      .map(([name, value]) => ({ name, value, color: GOAL_COLORS[name] }))
-      .filter((x) => x.value > 0);
-  }, [topicCalls]);
 
   const topicTimeSeries = useMemo(() => {
   if (UI_DATA_SOURCE === "API" && apiTopicsTs != null) {
@@ -2816,61 +2758,6 @@ const goalSplit = useMemo(() => {
       </CardContent>
     </Card>
 
-    <Card className="rounded-2xl">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">Эмоциональный фон</CardTitle>
-      </CardHeader>
-      <CardContent className="h-[240px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={topicSentimentSplit}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              innerRadius={55}
-              outerRadius={88}
-              stroke="none"
-            >
-              {topicSentimentSplit.map((entry, idx) => (
-                <Cell key={`${entry.name}-${idx}`} fill={entry.color} />
-              ))}
-            </Pie>
-            <Tooltip />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
-
-    <Card className="rounded-2xl">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">Достижение цели</CardTitle>
-      </CardHeader>
-      <CardContent className="h-[240px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={topicGoalSplit}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              innerRadius={55}
-              outerRadius={88}
-              stroke="none"
-            >
-              {topicGoalSplit.map((entry, idx) => (
-                <Cell key={`${entry.name}-${idx}`} fill={entry.color} />
-              ))}
-            </Pie>
-            <Tooltip />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
   </div>
 </TabsContent>
 
