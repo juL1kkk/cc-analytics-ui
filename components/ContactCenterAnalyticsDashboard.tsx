@@ -6,7 +6,10 @@ import {
   fetchOperatorsV2,
   type OperatorsResponseV2,
 } from "@/lib/analytics/operators.client";
-import { fetchChannelsSplitV2 } from "@/lib/analytics/channelsSplit.client";
+import {
+  fetchChannelsSplitV2,
+  type ChannelsSplitResponseV2,
+} from "@/lib/analytics/channelsSplit.client";
 import { fetchKpisV2, type KpisV2Response } from "@/lib/analytics/kpis.client";
 import {
   fetchRecentV2,
@@ -417,15 +420,7 @@ export default function ContactCenterAnalyticsDashboard() {
   const [apiKpis, setApiKpis] = useState<KpisV2Response | null>(null);
   const [apiOperators, setApiOperators] = useState<OperatorsResponseV2 | null>(null);
 
-  const [apiChannelSplit, setApiChannelSplit] = useState<
-  {
-    channelCode: string;
-    channelNameRu: string;
-    incoming: number;
-    outgoing: number;
-    responseSec: number | null;
-  }[] | null
- >(null);
+  const [apiChannelSplit, setApiChannelSplit] = useState<ChannelsSplitResponseV2 | null>(null);
   const [apiChannelResponseTrend, setApiChannelResponseTrend] = useState<ApiChannelResponseTrendPoint[] | null>(null);
   const [apiQueuesV2, setApiQueuesV2] = useState<QueuesAnalyticsResponseV2 | null>(null);
   const [apiQueueDepthV2, setApiQueueDepthV2] = useState<QueuesAnalyticsResponseV2 | null>(null);
@@ -1477,14 +1472,12 @@ const operatorLoad = useMemo(() => {
 }, [filteredCalls]);
   const channelSplit = useMemo(() => {
     if (UI_DATA_SOURCE === "API") {
-      const split = (apiTopicsTop?.channelSplit ?? [])
+      return (apiChannelSplit?.split ?? [])
         .map((item) => ({
-          name: item.nameRu,
-          value: item.value,
+          name: item.channelNameRu,
+          value: item.incoming + item.outgoing,
         }))
         .filter((item) => item.value > 0);
-
-      return split.length ? split : [{ name: "Нет данных", value: 1 }];
     }
 
     const map = new Map<string, number>();
@@ -1508,7 +1501,7 @@ const operatorLoad = useMemo(() => {
       name,
       value,
     }));
-  }, [UI_DATA_SOURCE, apiTopicsTop, filteredCalls]);
+  }, [UI_DATA_SOURCE, apiChannelSplit, filteredCalls]);
 
  const sentimentSplit = useMemo(() => {
   const counts = { "Позитив": 0, "Нейтрально": 0, "Негатив": 0 };
@@ -1804,7 +1797,7 @@ const goalSplit = useMemo(() => {
         ...(query ? { q: query } : {}),
       });
       if (!alive) return;
-      setApiChannelSplit(res.split ?? []);
+      setApiChannelSplit(res);
       setApiChannelResponseTrend(res.responseTrend ?? []);
     } catch (e) {
       if (!alive) return;
@@ -1821,7 +1814,7 @@ const goalSplit = useMemo(() => {
 
   const channelVolumes = useMemo(() => {
   if (UI_DATA_SOURCE === "API") {
-    return (apiChannelSplit ?? []).map((item) => ({
+    return (apiChannelSplit?.split ?? []).map((item) => ({
       name: item.channelNameRu,
       incoming: item.incoming,
       outgoing: item.outgoing,
@@ -2216,17 +2209,23 @@ const goalSplit = useMemo(() => {
                         <CardTitle className="text-base">Распределение по каналам</CardTitle>
                       </CardHeader>
                       <CardContent className="h-[260px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Tooltip />
-                            <Legend />
-                            <Pie data={channelSplit} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
-                              {channelSplit.map((_, idx) => (
-                                <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-                              ))}
-                            </Pie>
-                          </PieChart>
-                        </ResponsiveContainer>
+                        {channelSplit.length === 0 ? (
+                          <div className="h-full flex items-center justify-center text-center text-sm text-muted-foreground px-4">
+                            Нет данных за выбранный период / фильтры
+                          </div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Tooltip />
+                              <Legend />
+                              <Pie data={channelSplit} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
+                                {channelSplit.map((_, idx) => (
+                                  <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
+                                ))}
+                              </Pie>
+                            </PieChart>
+                          </ResponsiveContainer>
+                        )}
                       </CardContent>
                     </Card>
                   </div>
