@@ -25,14 +25,9 @@ import {
   type TimeseriesPointV2,
 } from "@/lib/analytics/timeseries/client";
 import {
-  fetchSentimentV2,
-  type SentimentV2Response,
-} from "@/lib/analytics/sentiment.client";
-import {
   fetchAgentStateSummaryV2,
   type AgentStateSummaryV2,
 } from "@/lib/analytics/agentStateSummary.client";
-import { fetchGoalSplitV2 } from "@/lib/analytics/goalSplit.client";
 import {
   fetchDepartmentsV2,
   type DepartmentsDictionaryResponseV2,
@@ -172,6 +167,8 @@ type CallRow = {
   status: "Завершён" | "Пропущен" | "Ожидание" | "В разговоре";
   fcr: boolean;
   resolution: "resolved" | "escalated" | "followup";
+  communicationColor?: string | null;
+  ticketResultCode?: string | null;
 };
 
 const CHANNEL_TAB_LABELS: Record<Channel, string> = {
@@ -225,8 +222,28 @@ const SENTIMENT_COLORS: Record<string, string> = {
 const GOAL_COLORS: Record<string, string> = {
   "Решено": "#22c55e",        // зелёный
   "Эскалация": "#dc2626",    // красный
+  "Не решено": "#f59e0b",    // оранжевый
   "Требует действий": "#f59e0b", // на будущее
 };
+
+function mapCommunicationColorToSentiment(
+  color: string | null | undefined
+): "Позитив" | "Нейтрально" | "Негатив" | null {
+  const normalized = String(color ?? "").trim().toLowerCase();
+  if (normalized === "green") return "Позитив";
+  if (normalized === "yellow") return "Нейтрально";
+  if (normalized === "red") return "Негатив";
+  return null;
+}
+
+function mapTicketResultToGoal(
+  code: string | null | undefined
+): "Решено" | "Эскалация" | "Не решено" {
+  const normalized = String(code ?? "").trim().toLowerCase();
+  if (normalized === "resolved") return "Решено";
+  if (normalized === "escalation") return "Эскалация";
+  return "Не решено";
+}
 
 function mapRecentToUi(apiResp: RecentV2Response): CallRow[] {
   return (apiResp.items ?? []).map((r) => ({
@@ -257,6 +274,11 @@ function mapRecentToUi(apiResp: RecentV2Response): CallRow[] {
       status: r.statusRu,
       fcr: false,
       resolution: "resolved",
+      communicationColor:
+        (r as unknown as { communicationColor?: string | null }).communicationColor ??
+        null,
+      ticketResultCode:
+        (r as unknown as { ticketResultCode?: string | null }).ticketResultCode ?? null,
     }));
 }
 
@@ -287,35 +309,6 @@ function mapOperatorsToUi(apiResp: OperatorsResponseV2) {
       asa: p.asaSec ?? 0,
     })),
   };
-}
-
-function mapSentimentToUi(apiResp: SentimentV2Response) {
-  return (apiResp.items ?? [])
-    .map((item) => ({
-      name: item.nameRu,
-      value: item.value,
-    }))
-    .filter((item) => item.value > 0);
-}
-
-function mapGoalToUi(apiResp: Array<{ nameRu: string; value: number }> | null) {
-  const values = { "Решено": 0, "Эскалация": 0 };
-
-  for (const item of apiResp ?? []) {
-    const key = item.nameRu.trim().toLowerCase();
-    if (["решено", "resolved", "completed"].includes(key)) {
-      values["Решено"] += item.value;
-      continue;
-    }
-    if (["эскалация", "escalated", "escalation"].includes(key)) {
-      values["Эскалация"] += item.value;
-    }
-  }
-
-  return [
-    { name: "Решено", value: values["Решено"] },
-    { name: "Эскалация", value: values["Эскалация"] },
-  ];
 }
 
 function formatTrendTimeLabel(rawTime: string) {
@@ -426,8 +419,6 @@ export default function ContactCenterAnalyticsDashboard() {
   const [apiQueueDepthV2, setApiQueueDepthV2] = useState<QueuesAnalyticsResponseV2 | null>(null);
 
   const [apiTimeSeries, setApiTimeSeries] = useState<TimeseriesPointV2[] | null>(null);
-  const [apiSentiment, setApiSentiment] = useState<SentimentV2Response | null>(null);
-  const [apiGoalSplit, setApiGoalSplit] = useState<Array<{ nameRu: string; value: number }> | null>(null);
   const [apiTopicsTop, setApiTopicsTop] = useState<
     Array<{ name: string; count: number; avgHandleSec: number; fcrPct: number }> | null
   >(null);
@@ -577,36 +568,6 @@ export default function ContactCenterAnalyticsDashboard() {
 
     (async () => {
       try {
-        const data = await fetchSentimentV2({
-          period,
-          ...(dept !== "Все отделы" ? { dept } : {}),
-          ...(channel !== "all" ? { channel } : {}),
-          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
-          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
-          ...(topic !== "all" ? { topic } : {}),
-          ...(query ? { q: query } : {}),
-        });
-        if (!alive) return;
-        setApiSentiment(data);
-      } catch (e) {
-        if (!alive) return;
-        console.warn("[UI] sentiment/v2 failed", e);
-        setApiSentiment(null);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, selectedOperator, topic, query]);
-
-  useEffect(() => {
-    if (UI_DATA_SOURCE !== "API") return;
-
-    let alive = true;
-
-    (async () => {
-      try {
         const data = await fetchAgentStateSummaryV2({
           period,
           ...(dept !== "Все отделы" ? { dept } : {}),
@@ -625,36 +586,6 @@ export default function ContactCenterAnalyticsDashboard() {
       alive = false;
     };
   }, [UI_DATA_SOURCE, period, dept, selectedQueue]);
-
-  useEffect(() => {
-    if (UI_DATA_SOURCE !== "API") return;
-
-    let alive = true;
-
-    (async () => {
-      try {
-        const data = await fetchGoalSplitV2({
-          period,
-          ...(dept !== "Все отделы" ? { dept } : {}),
-          ...(channel !== "all" ? { channel } : {}),
-          ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
-          ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
-          ...(topic !== "all" ? { topic } : {}),
-          ...(query ? { q: query } : {}),
-        });
-        if (!alive) return;
-        setApiGoalSplit(data);
-      } catch (e) {
-        if (!alive) return;
-        console.warn("[UI] goal split source failed", e);
-        setApiGoalSplit(null);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, selectedOperator, topic, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -830,7 +761,6 @@ export default function ContactCenterAnalyticsDashboard() {
           ...(channel !== "all" ? { channel } : {}),
           ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
           ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
-          ...(topic !== "all" ? { topic } : {}),
           ...(query ? { q: query } : {}),
           limit: 20,
           offset: 0,
@@ -847,7 +777,7 @@ export default function ContactCenterAnalyticsDashboard() {
     return () => {
       alive = false;
     };
-  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, selectedOperator, topic, query]);
+  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, selectedOperator, query]);
 
   const calls: CallRow[] = useMemo(() => {
   const result: CallRow[] = [];
@@ -907,6 +837,13 @@ for (const dept of depts) {
         status,
         fcr,
         resolution,
+        communicationColor: ["green", "yellow", "red"][id % 3],
+        ticketResultCode:
+          resolution === "resolved"
+            ? "resolved"
+            : resolution === "escalated"
+            ? "escalation"
+            : null,
       });
     }
   }
@@ -940,6 +877,13 @@ result.push({
   status,
   fcr,
   resolution,
+  communicationColor: ["green", "yellow", "red"][id % 3],
+  ticketResultCode:
+    resolution === "resolved"
+      ? "resolved"
+      : resolution === "escalated"
+      ? "escalation"
+      : null,
 });
 
 // 👉 остальные обращения как раньше
@@ -973,6 +917,13 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     status,
     fcr,
     resolution,
+    communicationColor: ["green", "yellow", "red"][id % 3],
+    ticketResultCode:
+      resolution === "resolved"
+        ? "resolved"
+        : resolution === "escalated"
+        ? "escalation"
+        : null,
   });
 }
     }
@@ -1146,12 +1097,20 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     return queueLabel(queueDepthQueue, queueSelectOptions);
   }, [UI_DATA_SOURCE, queueDepthQueue, queueSelectOptions]);
 
+  const callsScopeForAnalytics = useMemo(() => {
+    if (UI_DATA_SOURCE === "API") {
+      if (apiRecent == null) return [] as CallRow[];
+      return mapRecentToUi(apiRecent);
+    }
+    return filteredCalls;
+  }, [UI_DATA_SOURCE, apiRecent, filteredCalls]);
+
   const topicCalls = useMemo(
     () =>
       topic === "all"
-        ? filteredCalls
-        : filteredCalls.filter((c) => c.topic === topic),
-    [filteredCalls, topic]
+        ? callsScopeForAnalytics
+        : callsScopeForAnalytics.filter((c) => c.topic === topic),
+    [callsScopeForAnalytics, topic]
   );
 
   const topicAhtGauge = useMemo(() => {
@@ -1205,18 +1164,22 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
       return [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
     }
 
-    const missed = topicCalls.filter((c) => c.status === "Пропущен").length;
-    const missedRatio = missed / topicCalls.length;
+    const counts = { "Позитив": 0, "Нейтрально": 0, "Негатив": 0 };
+    for (const c of topicCalls) {
+      const mapped = mapCommunicationColorToSentiment(c.communicationColor);
+      if (!mapped) continue;
+      counts[mapped] += 1;
+    }
 
-    const negative = Math.max(5, Math.min(70, Math.round(missedRatio * 100)));
-    const positive = Math.max(10, Math.round((1 - missedRatio) * 45));
-    const neutral = Math.max(5, 100 - positive - negative);
+    const rows = Object.entries(counts)
+      .map(([name, value]) => ({
+        name,
+        value,
+        color: SENTIMENT_COLORS[name],
+      }))
+      .filter((x) => x.value > 0);
 
-    return [
-      { name: "Позитив", value: positive, color: SENTIMENT_COLORS["Позитив"] },
-      { name: "Нейтрально", value: neutral, color: SENTIMENT_COLORS["Нейтрально"] },
-      { name: "Негатив", value: negative, color: SENTIMENT_COLORS["Негатив"] },
-    ];
+    return rows.length ? rows : [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
   }, [topicCalls]);
 
   const topicGoalSplit = useMemo(() => {
@@ -1224,14 +1187,15 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
       return [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
     }
 
-    const resolved = topicCalls.filter((c) => c.status === "Завершён").length;
-    const resolvedPct = Math.round((resolved / topicCalls.length) * 100);
-    const escalatedPct = 100 - resolvedPct;
+    const counts = { "Решено": 0, "Эскалация": 0, "Не решено": 0 };
+    for (const c of topicCalls) {
+      const mapped = mapTicketResultToGoal(c.ticketResultCode);
+      counts[mapped] += 1;
+    }
 
-    return [
-      { name: "Решено", value: resolvedPct, color: GOAL_COLORS["Решено"] },
-      { name: "Эскалация", value: escalatedPct, color: GOAL_COLORS["Эскалация"] },
-    ];
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value, color: GOAL_COLORS[name] }))
+      .filter((x) => x.value > 0);
   }, [topicCalls]);
 
   const topicTimeSeries = useMemo(() => {
@@ -1453,7 +1417,7 @@ const operatorLoad = useMemo(() => {
     .map(([t]) => t);
 
   const base = hours.map((h) => {
-    const row: Record<string, any> = { t: `${h}:00` };
+    const row: Record<string, string | number> = { t: `${h}:00` };
     for (const topic of topTopics) row[topic] = 0;
     return row;
   });
@@ -1506,41 +1470,30 @@ const operatorLoad = useMemo(() => {
  const sentimentSplit = useMemo(() => {
   const counts = { "Позитив": 0, "Нейтрально": 0, "Негатив": 0 };
 
-  for (const c of filteredCalls) {
-    if (c.status === "Пропущен") counts["Негатив"] += 1;
-    else if (c.channel === "voice") counts["Нейтрально"] += 1;
-    else counts["Позитив"] += 1;
+  for (const c of callsScopeForAnalytics) {
+    const mapped = mapCommunicationColorToSentiment(c.communicationColor);
+    if (!mapped) continue;
+    counts[mapped] += 1;
   }
 
-  return Object.entries(counts)
+  const rows = Object.entries(counts)
     .map(([name, value]) => ({ name, value }))
     .filter((x) => x.value > 0);
-}, [filteredCalls]);
-
- const sentimentSplitView = useMemo(() => {
-  if (UI_DATA_SOURCE === "API" && apiSentiment !== null) {
-    return mapSentimentToUi(apiSentiment);
-  }
-  return sentimentSplit;
- }, [UI_DATA_SOURCE, apiSentiment, sentimentSplit]);
+  return rows.length ? rows : [{ name: "Нет данных", value: 1 }];
+}, [callsScopeForAnalytics]);
 
 const goalSplit = useMemo(() => {
-  if (UI_DATA_SOURCE === "API") {
-    return mapGoalToUi(apiGoalSplit);
-  }
+  const counts = { "Решено": 0, "Эскалация": 0, "Не решено": 0 };
 
-  const counts = { "Решено": 0, "Эскалация": 0, "Требует действий": 0 };
-
-  for (const c of filteredCalls) {
-    if (c.status === "Завершён") counts["Решено"] += 1;
-    else if (c.status === "Пропущен") counts["Эскалация"] += 1;
-    else counts["Требует действий"] += 1;
+  for (const c of callsScopeForAnalytics) {
+    const mapped = mapTicketResultToGoal(c.ticketResultCode);
+    counts[mapped] += 1;
   }
 
   return Object.entries(counts)
     .map(([name, value]) => ({ name, value }))
     .filter((x) => x.value > 0);
-}, [UI_DATA_SOURCE, apiGoalSplit, filteredCalls]);
+}, [callsScopeForAnalytics]);
 
   const themes: Theme[] = useMemo(() => {
   const map = new Map<
@@ -2242,14 +2195,14 @@ const goalSplit = useMemo(() => {
           <Tooltip />
           <Legend />
             <Pie
-            data={sentimentSplitView}
+            data={sentimentSplit}
             dataKey="value"
             nameKey="name"
             innerRadius={55}
             outerRadius={90}
             paddingAngle={2}
           >
-            {sentimentSplitView.map((entry) => (
+            {sentimentSplit.map((entry) => (
   <Cell
     key={entry.name}
     fill={SENTIMENT_COLORS[entry.name] || "#9ca3af"}
