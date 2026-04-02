@@ -1160,13 +1160,39 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
   );
 
   const topicAhtGauge = useMemo(() => {
-    const handled = topicCalls.filter(
-      (c) => c.status === "Завершён" && c.durationSec > 0
-    );
+    let ahtSec = 0;
 
-    const ahtSec = handled.length
-      ? Math.round(handled.reduce((sum, c) => sum + c.durationSec, 0) / handled.length)
-      : 0;
+    if (UI_DATA_SOURCE === "API" && apiTopicsTop?.topTopics) {
+      const topTopics = apiTopicsTop.topTopics;
+
+      if (topic === "all") {
+        const totalCount = topTopics.reduce((sum, item) => sum + item.count, 0);
+        ahtSec =
+          totalCount > 0
+            ? Math.round(
+                topTopics.reduce(
+                  (sum, item) => sum + item.avgHandleSec * item.count,
+                  0
+                ) / totalCount
+              )
+            : 0;
+      } else {
+        const selectedTopic = topTopics.find(
+          (item) => String(item.topicId) === topic || item.topicNameRu === topic
+        );
+        ahtSec = selectedTopic?.avgHandleSec ?? 0;
+      }
+    } else {
+      const handled = topicCalls.filter(
+        (c) => c.status === "Завершён" && c.durationSec > 0
+      );
+
+      ahtSec = handled.length
+        ? Math.round(
+            handled.reduce((sum, c) => sum + c.durationSec, 0) / handled.length
+          )
+        : 0;
+    }
 
     const boundedAht = Math.max(0, Math.min(600, ahtSec));
     return {
@@ -1176,9 +1202,23 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
         { name: "Остальное", value: 600 - boundedAht },
       ],
     };
-  }, [topicCalls]);
+  }, [UI_DATA_SOURCE, apiTopicsTop, topic, topicCalls]);
 
   const topicChannelSplit = useMemo(() => {
+    if (UI_DATA_SOURCE === "API" && apiTopicsTop?.channelSplit) {
+      const split = apiTopicsTop.channelSplit
+        .filter((item) => item.value > 0)
+        .map((item, idx) => ({
+          name: item.nameRu,
+          value: item.value,
+          color: COLORS[idx % COLORS.length],
+        }));
+
+      return split.length
+        ? split
+        : [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
+    }
+
     const channelOrder: Array<{
       key: Exclude<Channel, "all">;
       label: string;
@@ -1212,7 +1252,7 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
       .filter((item) => item.value > 0);
 
     return data.length ? data : [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
-  }, [topicCalls]);
+  }, [UI_DATA_SOURCE, apiTopicsTop, topicCalls]);
 
   const topicSentimentSplit = useMemo(() => {
     if (!topicCalls.length) {
