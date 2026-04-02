@@ -1205,60 +1205,6 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     };
   }, [UI_DATA_SOURCE, apiTopicsTop, topic, topicCalls]);
 
-  const topicChannelSplit = useMemo(() => {
-    if (UI_DATA_SOURCE === "API") {
-      const apiSplit = (
-        apiTopicsTop as { channelSplit?: Array<{ nameRu: string; value: number }> } | null
-      )?.channelSplit;
-
-      const split = (apiSplit ?? [])
-        .filter((item) => item.value > 0)
-        .map((item, idx) => ({
-          name: item.nameRu,
-          value: item.value,
-          color: COLORS[idx % COLORS.length],
-        }));
-
-      return split.length
-        ? split
-        : [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
-    }
-
-    const channelOrder: Array<{
-      key: Exclude<Channel, "all">;
-      label: string;
-      color: string;
-    }> = [
-      { key: "email", label: "Email", color: COLORS[0] },
-      { key: "push", label: "Push", color: COLORS[1] },
-      { key: "sms", label: "SMS", color: COLORS[2] },
-      { key: "voice", label: "Звонки", color: COLORS[3] },
-      { key: "chat", label: "Чат", color: COLORS[4] },
-    ];
-
-    const countByChannel = new Map<Exclude<Channel, "all">, number>([
-      ["voice", 0],
-      ["chat", 0],
-      ["email", 0],
-      ["sms", 0],
-      ["push", 0],
-    ]);
-
-    for (const c of topicCalls) {
-      countByChannel.set(c.channel, (countByChannel.get(c.channel) ?? 0) + 1);
-    }
-
-    const data = channelOrder
-      .map(({ key, label, color }) => ({
-        name: label,
-        value: countByChannel.get(key) ?? 0,
-        color,
-      }))
-      .filter((item) => item.value > 0);
-
-    return data.length ? data : [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
-  }, [UI_DATA_SOURCE, apiTopicsTop, topicCalls]);
-
   const topicSentimentSplit = useMemo(() => {
     if (!topicCalls.length) {
       return [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
@@ -2805,26 +2751,9 @@ const goalSplit = useMemo(() => {
         <CardTitle className="text-base">Распределение по каналам</CardTitle>
       </CardHeader>
       <CardContent className="h-[240px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={topicChannelSplit}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              innerRadius={55}
-              outerRadius={88}
-              stroke="none"
-            >
-              {topicChannelSplit.map((entry, idx) => (
-                <Cell key={`${entry.name}-${idx}`} fill={entry.color} />
-              ))}
-            </Pie>
-            <Tooltip />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
+        <div className="h-full flex items-center justify-center text-center text-sm text-muted-foreground px-4">
+          Канальный разрез по тематикам временно недоступен
+        </div>
       </CardContent>
     </Card>
 
