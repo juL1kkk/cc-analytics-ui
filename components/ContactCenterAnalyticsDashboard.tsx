@@ -1537,7 +1537,7 @@ const operatorLoad = useMemo(() => {
     const key = `${c.startedAt.split(":")[0]}:00`;
     const idx = idxByHour.get(key);
     if (idx === undefined) continue;
-    base[idx][c.topic] += 1;
+    base[idx][c.topic] = Number(base[idx][c.topic] ?? 0) + 1;
   }
 
   return { data: base, topTopics };
