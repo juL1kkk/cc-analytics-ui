@@ -231,6 +231,25 @@ const GOAL_COLORS: Record<string, string> = {
   "Требует действий": "#f59e0b", // на будущее
 };
 
+function mapCommunicationColorToSentiment(
+  color: string | null | undefined
+): "Позитив" | "Нейтрально" | "Негатив" | null {
+  const normalized = String(color ?? "").trim().toLowerCase();
+  if (normalized === "green") return "Позитив";
+  if (normalized === "yellow") return "Нейтрально";
+  if (normalized === "red") return "Негатив";
+  return null;
+}
+
+function mapTicketResultToGoal(
+  code: string | null | undefined
+): "Решено" | "Эскалация" | "Не решено" {
+  const normalized = String(code ?? "").trim().toLowerCase();
+  if (normalized === "resolved") return "Решено";
+  if (normalized === "escalation") return "Эскалация";
+  return "Не решено";
+}
+
 function mapRecentToUi(apiResp: RecentV2Response): CallRow[] {
   return (apiResp.items ?? []).map((r) => ({
       id: `C-${r.externalId}`,
@@ -1190,10 +1209,90 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     [callsScopeForAnalytics, topic]
   );
 
-  const topicSharePct =
-    filteredCalls.length > 0
-      ? Math.round((topicCalls.length / filteredCalls.length) * 100)
-      : 0;
+  const topicAhtGauge = useMemo(() => {
+    let ahtSec = 0;
+
+    if (UI_DATA_SOURCE === "API") {
+      const apiTopTopics = Array.isArray(apiTopicsTop)
+        ? apiTopicsTop
+        : ((apiTopicsTop as { topTopics?: Array<{ count: number; avgHandleSec: number; name?: string }> } | null)
+            ?.topTopics ?? []);
+
+      if (topic === "all") {
+        const totalCount = apiTopTopics.reduce((sum, item) => sum + item.count, 0);
+        ahtSec =
+          totalCount > 0
+            ? Math.round(
+                apiTopTopics.reduce(
+                  (sum, item) => sum + item.avgHandleSec * item.count,
+                  0
+                ) / totalCount
+              )
+            : 0;
+      } else {
+        const selectedTopic = apiTopTopics.find((item) => item.name === topic);
+        ahtSec = selectedTopic?.avgHandleSec ?? 0;
+      }
+    } else {
+      const handled = topicCalls.filter(
+        (c) => c.status === "Завершён" && c.durationSec > 0
+      );
+
+      ahtSec = handled.length
+        ? Math.round(
+            handled.reduce((sum, c) => sum + c.durationSec, 0) / handled.length
+          )
+        : 0;
+    }
+
+    const boundedAht = Math.max(0, Math.min(600, ahtSec));
+    return {
+      ahtSec,
+      data: [
+        { name: "AHT", value: boundedAht },
+        { name: "Остальное", value: 600 - boundedAht },
+      ],
+    };
+  }, [UI_DATA_SOURCE, apiTopicsTop, topic, topicCalls]);
+
+  const topicSentimentSplit = useMemo(() => {
+    if (!topicCalls.length) {
+      return [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
+    }
+
+    const counts = { "Позитив": 0, "Нейтрально": 0, "Негатив": 0 };
+    for (const c of topicCalls) {
+      const mapped = mapCommunicationColorToSentiment(c.communicationColor);
+      if (!mapped) continue;
+      counts[mapped] += 1;
+    }
+
+    const rows = Object.entries(counts)
+      .map(([name, value]) => ({
+        name,
+        value,
+        color: SENTIMENT_COLORS[name],
+      }))
+      .filter((x) => x.value > 0);
+
+    return rows.length ? rows : [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
+  }, [topicCalls]);
+
+  const topicGoalSplit = useMemo(() => {
+    if (!topicCalls.length) {
+      return [{ name: "Нет данных", value: 1, color: "#d1d5db" }];
+    }
+
+    const counts = { "Решено": 0, "Эскалация": 0, "Не решено": 0 };
+    for (const c of topicCalls) {
+      const mapped = mapTicketResultToGoal(c.ticketResultCode);
+      counts[mapped] += 1;
+    }
+
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value, color: GOAL_COLORS[name] }))
+      .filter((x) => x.value > 0);
+  }, [topicCalls]);
 
   const topicTimeSeries = useMemo(() => {
   if (UI_DATA_SOURCE === "API" && apiTopicsTs != null) {
@@ -2191,6 +2290,71 @@ const goalSplit = useMemo(() => {
                     </Card>
                   </div>
 
+                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+
+  <Card className="rounded-2xl">
+    <CardHeader className="pb-2">
+      <CardTitle className="text-base">Эмоциональный фон</CardTitle>
+    </CardHeader>
+    <CardContent className="h-[260px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Tooltip />
+          <Legend />
+            <Pie
+            data={sentimentSplitView}
+            dataKey="value"
+            nameKey="name"
+            innerRadius={55}
+            outerRadius={90}
+            paddingAngle={2}
+          >
+            {sentimentSplitView.map((entry) => (
+  <Cell
+    key={entry.name}
+    fill={SENTIMENT_COLORS[entry.name] || "#9ca3af"}
+  />
+))}
+
+          </Pie>
+        </PieChart>
+      </ResponsiveContainer>
+    </CardContent>
+  </Card>
+
+  <Card className="rounded-2xl">
+    <CardHeader className="pb-2">
+      <CardTitle className="text-base">Достижение цели</CardTitle>
+    </CardHeader>
+    <CardContent className="h-[260px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Tooltip />
+          <Legend />
+          <Pie
+            data={goalSplit}
+            dataKey="value"
+            nameKey="name"
+            innerRadius={55}
+            outerRadius={90}
+            paddingAngle={2}
+          >
+            {goalSplit.map((entry) => {
+  const key = entry.name.trim();
+  return (
+    <Cell
+      key={key}
+      fill={GOAL_COLORS[key] || "#9ca3af"}
+    />
+  );
+})}
+          </Pie>
+        </PieChart>
+      </ResponsiveContainer>
+    </CardContent>
+  </Card>
+</div>
+ 
                 </TabsContent>
 
                 <TabsContent value="operators" className="m-0 space-y-4">
@@ -2656,7 +2820,6 @@ const goalSplit = useMemo(() => {
         </div>
       </CardContent>
     </Card>
-    {/* Карточки "Эмоциональный фон" и "Достижение цели" intentionally removed only for topics tab */}
   </div>
 </TabsContent>
 
