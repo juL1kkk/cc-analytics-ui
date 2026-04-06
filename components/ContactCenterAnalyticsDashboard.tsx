@@ -1190,51 +1190,10 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     [callsScopeForAnalytics, topic]
   );
 
-  const topicAhtGauge = useMemo(() => {
-    let ahtSec = 0;
-
-    if (UI_DATA_SOURCE === "API") {
-      const apiTopTopics = Array.isArray(apiTopicsTop)
-        ? apiTopicsTop
-        : ((apiTopicsTop as { topTopics?: Array<{ count: number; avgHandleSec: number; name?: string }> } | null)
-            ?.topTopics ?? []);
-
-      if (topic === "all") {
-        const totalCount = apiTopTopics.reduce((sum, item) => sum + item.count, 0);
-        ahtSec =
-          totalCount > 0
-            ? Math.round(
-                apiTopTopics.reduce(
-                  (sum, item) => sum + item.avgHandleSec * item.count,
-                  0
-                ) / totalCount
-              )
-            : 0;
-      } else {
-        const selectedTopic = apiTopTopics.find((item) => item.name === topic);
-        ahtSec = selectedTopic?.avgHandleSec ?? 0;
-      }
-    } else {
-      const handled = topicCalls.filter(
-        (c) => c.status === "Завершён" && c.durationSec > 0
-      );
-
-      ahtSec = handled.length
-        ? Math.round(
-            handled.reduce((sum, c) => sum + c.durationSec, 0) / handled.length
-          )
-        : 0;
-    }
-
-    const boundedAht = Math.max(0, Math.min(600, ahtSec));
-    return {
-      ahtSec,
-      data: [
-        { name: "AHT", value: boundedAht },
-        { name: "Остальное", value: 600 - boundedAht },
-      ],
-    };
-  }, [UI_DATA_SOURCE, apiTopicsTop, topic, topicCalls]);
+  const topicSharePct =
+    filteredCalls.length > 0
+      ? Math.round((topicCalls.length / filteredCalls.length) * 100)
+      : 0;
 
   const topicTimeSeries = useMemo(() => {
   if (UI_DATA_SOURCE === "API" && apiTopicsTs != null) {
@@ -2653,31 +2612,12 @@ const goalSplit = useMemo(() => {
   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
     <Card className="rounded-2xl">
       <CardHeader className="pb-2">
-        <CardTitle className="text-base">Спидометр ср. Продолж.</CardTitle>
+        <CardTitle className="text-base">Доля темы</CardTitle>
       </CardHeader>
-      <CardContent className="h-[240px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={topicAhtGauge.data}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              innerRadius={60}
-              outerRadius={88}
-              startAngle={90}
-              endAngle={-270}
-              stroke="none"
-            >
-              <Cell fill="#111827" />
-              <Cell fill="#e5e7eb" />
-            </Pie>
-            <Tooltip />
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="mt-2 text-center text-sm text-muted-foreground">
-          AHT: {formatSec(topicAhtGauge.ahtSec)}
+      <CardContent className="h-[240px] flex flex-col items-center justify-center">
+        <div className="text-4xl font-semibold">{topicSharePct}%</div>
+        <div className="text-sm text-muted-foreground mt-2">
+          Доля от всех обращений за период
         </div>
       </CardContent>
     </Card>
