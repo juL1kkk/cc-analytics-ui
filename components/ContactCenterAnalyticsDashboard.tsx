@@ -116,6 +116,13 @@ type Theme = {
   fcrPct: number;
 };
 
+type AiInsight = {
+  type: "alert" | "info" | "recommendation";
+  title: string;
+  description: string;
+  severity?: "low" | "medium" | "high";
+};
+
 type FilterOption = {
   label: string;
   value: string;
@@ -2030,6 +2037,178 @@ const goalSplit = useMemo(() => {
     });
   }, [UI_DATA_SOURCE, apiChannelResponseTrend, channelTabCalls, channelTab]);
 
+  const aiInsights = useMemo<AiInsight[]>(() => {
+    const insights: AiInsight[] = [];
+
+    const missedPercent = kpis.incoming > 0 ? (kpis.missed / kpis.incoming) * 100 : 0;
+    if (missedPercent > 20) {
+      insights.push({
+        type: "alert",
+        title: "Рост пропущенных обращений",
+        description: `Пропущенные: ${Math.round(missedPercent)}% за период`,
+        severity: missedPercent > 25 ? "high" : "medium",
+      });
+    }
+
+    for (const q of queueStats) {
+      if (q.slaPct < 70) {
+        insights.push({
+          type: "alert",
+          title: `Низкий SLA: ${q.name}`,
+          description: `SLA ${q.slaPct}%, пропущенные ${q.abandonedPct}%`,
+          severity: q.slaPct < 60 ? "high" : "medium",
+        });
+      }
+
+      if (q.abandonedPct > 20) {
+        insights.push({
+          type: "alert",
+          title: `Высокая доля пропущенных: ${q.name}`,
+          description: `Очередь ${q.name}: ${q.abandonedPct}% пропущенных`,
+          severity: q.abandonedPct > 25 ? "high" : "medium",
+        });
+      }
+    }
+
+    const totalTopics = topicSplit.reduce((sum, item) => sum + item.value, 0);
+    for (const t of topicSplit) {
+      const share = totalTopics > 0 ? (t.value / totalTopics) * 100 : 0;
+      if (share > 30) {
+        insights.push({
+          type: "alert",
+          title: "Доминирующая тема",
+          description: `${t.name}: ${Math.round(share)}% обращений`,
+          severity: "medium",
+        });
+      }
+    }
+
+    if (timeSeries.length > 0) {
+      const avgIncoming =
+        timeSeries.reduce((sum, point) => sum + point.incoming, 0) / timeSeries.length;
+      const spike = timeSeries.find((point) => avgIncoming > 0 && point.incoming > avgIncoming * 2);
+      if (spike) {
+        const growthPct = Math.round(((spike.incoming - avgIncoming) / avgIncoming) * 100);
+        insights.push({
+          type: "alert",
+          title: "Резкий рост обращений",
+          description: `${spike.t}: +${growthPct}% к среднему`,
+          severity: growthPct > 200 ? "high" : "medium",
+        });
+      }
+    }
+
+    const mostPopularTopic = themesView[0];
+    if (mostPopularTopic) {
+      const total = themesView.reduce((sum, item) => sum + item.count, 0);
+      const share = total > 0 ? Math.round((mostPopularTopic.count / total) * 100) : 0;
+      insights.push({
+        type: "info",
+        title: "Самая популярная тема",
+        description: `${mostPopularTopic.name}: ${share}% обращений`,
+      });
+    }
+
+    const bestOperator = [...operatorStats].sort((a, b) => {
+      if (b.fcr !== a.fcr) return b.fcr - a.fcr;
+      return a.ahtMin - b.ahtMin;
+    })[0];
+
+    if (bestOperator) {
+      insights.push({
+        type: "info",
+        title: "Лучший оператор",
+        description: `${bestOperator.name}: FCR ${bestOperator.fcr}% · AHT ${bestOperator.ahtMin} мин`,
+      });
+    }
+
+    if (kpis.ahtSec > 0) {
+      insights.push({
+        type: "info",
+        title: "Средний AHT",
+        description: `Текущий AHT: ${formatSec(kpis.ahtSec)}`,
+      });
+    }
+
+    const busiestQueue = [...queueStats].sort((a, b) => b.total - a.total)[0];
+    if (busiestQueue) {
+      insights.push({
+        type: "info",
+        title: "Самая загруженная очередь",
+        description: `${busiestQueue.name}: ${busiestQueue.total} обращений`,
+      });
+    }
+
+    const activeChannel = [...channelSplit].sort((a, b) => b.value - a.value)[0];
+    if (activeChannel) {
+      insights.push({
+        type: "info",
+        title: "Самый активный канал",
+        description: `${activeChannel.name}: ${activeChannel.value} обращений`,
+      });
+    }
+
+    if (queueStats.some((q) => q.slaPct < 75)) {
+      insights.push({
+        type: "recommendation",
+        title: "Добавить операторов в очередь",
+        description: "SLA ниже целевого уровня, требуется усиление смены",
+        severity: "medium",
+      });
+    }
+
+    if (topicSplit.some((t) => (totalTopics > 0 ? (t.value / totalTopics) * 100 : 0) > 30)) {
+      insights.push({
+        type: "recommendation",
+        title: "Создать отдельный сценарий для темы",
+        description: "Одна из тем доминирует в обращениях, обновите скрипты/FAQ",
+        severity: "low",
+      });
+    }
+
+    if (queueStats.some((q) => q.abandonedPct > 15) || missedPercent > 15) {
+      insights.push({
+        type: "recommendation",
+        title: "Перераспределить нагрузку",
+        description: "Высокая доля пропущенных обращений, стоит перераспределить поток",
+        severity: "medium",
+      });
+    }
+
+    if (timeSeries.length > 0) {
+      const avgIncoming =
+        timeSeries.reduce((sum, point) => sum + point.incoming, 0) / timeSeries.length;
+      if (timeSeries.some((point) => avgIncoming > 0 && point.incoming > avgIncoming * 2)) {
+        insights.push({
+          type: "recommendation",
+          title: "Проверить причину роста обращений",
+          description: "Обнаружен всплеск трафика, проверьте инциденты и кампании",
+          severity: "medium",
+        });
+      }
+    }
+
+    return insights;
+  }, [kpis, queueStats, topicSplit, timeSeries, themesView, operatorStats, channelSplit]);
+
+  const aiAlerts = useMemo(
+    () => aiInsights.filter((item) => item.type === "alert"),
+    [aiInsights]
+  );
+  const aiInfos = useMemo(
+    () => aiInsights.filter((item) => item.type === "info"),
+    [aiInsights]
+  );
+  const aiRecommendations = useMemo(
+    () => aiInsights.filter((item) => item.type === "recommendation"),
+    [aiInsights]
+  );
+
+  const aiSeverityBadgeVariant = (severity?: AiInsight["severity"]) => {
+    if (severity === "high") return "destructive" as const;
+    if (severity === "medium") return "secondary" as const;
+    return "outline" as const;
+  };
 
 
 
@@ -2204,6 +2383,7 @@ const goalSplit = useMemo(() => {
                 <TabsTrigger value="queues">Очереди</TabsTrigger>
                 <TabsTrigger value="channels">Каналы</TabsTrigger>
                 <TabsTrigger value="topics">Тематики</TabsTrigger>
+                <TabsTrigger value="ai-insights">AI аналитика</TabsTrigger>
               </TabsList>
 
               <div className="flex items-center gap-2">
@@ -2840,6 +3020,88 @@ const goalSplit = useMemo(() => {
     </Card>
   </div>
 </TabsContent>
+
+              <TabsContent value="ai-insights" className="m-0 space-y-4">
+                <Card className="rounded-2xl">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">AI Alerts</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {aiAlerts.length ? (
+                        aiAlerts.map((item, index) => (
+                          <div key={`${item.title}-${index}`} className="rounded-2xl border bg-background p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium">{item.title}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">{item.description}</div>
+                              </div>
+                              <Badge variant={aiSeverityBadgeVariant(item.severity)} className="rounded-xl">
+                                {item.severity ?? "medium"}
+                              </Badge>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border bg-background p-3 text-sm text-muted-foreground">
+                          Критичных AI-алертов не обнаружено.
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-2xl">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">AI Insights</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {aiInfos.length ? (
+                        aiInfos.map((item, index) => (
+                          <div key={`${item.title}-${index}`} className="rounded-2xl border bg-background p-3">
+                            <div className="text-sm font-medium">{item.title}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{item.description}</div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border bg-background p-3 text-sm text-muted-foreground">
+                          AI инсайты пока недоступны.
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-2xl">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">AI Recommendations</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {aiRecommendations.length ? (
+                        aiRecommendations.map((item, index) => (
+                          <div key={`${item.title}-${index}`} className="rounded-2xl border bg-background p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium">{item.title}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">{item.description}</div>
+                              </div>
+                              <Badge variant={aiSeverityBadgeVariant(item.severity)} className="rounded-xl">
+                                {item.severity ?? "low"}
+                              </Badge>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border bg-background p-3 text-sm text-muted-foreground">
+                          Рекомендации пока не сформированы.
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
               </div>
               
