@@ -697,7 +697,6 @@ export default function ContactCenterAnalyticsDashboard() {
           ...(channel !== "all" ? { channel } : {}),
           ...(selectedQueue !== "all" ? { queue: selectedQueue } : {}),
           ...(selectedOperator !== "all" ? { operator: selectedOperator } : {}),
-          ...(topic !== "all" ? { topic } : {}),
           ...(query ? { q: query } : {}),
         });
         if (!alive) return;
@@ -713,7 +712,7 @@ export default function ContactCenterAnalyticsDashboard() {
       alive = false;
       controller.abort();
     };
-  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, selectedOperator, topic, query]);
+  }, [UI_DATA_SOURCE, period, dept, channel, selectedQueue, selectedOperator, query]);
 
   useEffect(() => {
     if (UI_DATA_SOURCE !== "API") return;
@@ -2840,7 +2839,6 @@ const goalSplit = useMemo(() => {
       </CardContent>
     </Card>
   </div>
-</div>
 </TabsContent>
 
               </div>
