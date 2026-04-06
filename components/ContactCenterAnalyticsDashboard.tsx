@@ -2614,10 +2614,34 @@ const goalSplit = useMemo(() => {
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Доля темы</CardTitle>
       </CardHeader>
-      <CardContent className="h-[240px] flex flex-col items-center justify-center">
-        <div className="text-4xl font-semibold">{topicSharePct}%</div>
-        <div className="text-sm text-muted-foreground mt-2">
-          Доля от всех обращений за период
+      <CardContent className="h-[240px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={[
+                { name: "Доля", value: topicSharePct },
+                { name: "Остальное", value: 100 - topicSharePct },
+              ]}
+              dataKey="value"
+              cx="50%"
+              cy="50%"
+              innerRadius={60}
+              outerRadius={88}
+              startAngle={90}
+              endAngle={-270}
+              stroke="none"
+            >
+              <Cell fill="#111827" />
+              <Cell fill="#e5e7eb" />
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+
+        <div className="mt-2 text-center">
+          <div className="text-2xl font-semibold">{topicSharePct}%</div>
+          <div className="text-sm text-muted-foreground">
+            Доля от всех обращений за период
+          </div>
         </div>
       </CardContent>
     </Card>
