@@ -2656,7 +2656,7 @@ const goalSplit = useMemo(() => {
         </div>
       </CardContent>
     </Card>
-
+    {/* Карточки "Эмоциональный фон" и "Достижение цели" intentionally removed only for topics tab */}
   </div>
 </TabsContent>
 
