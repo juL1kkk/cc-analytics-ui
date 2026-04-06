@@ -1140,6 +1140,11 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
       .map((value) => ({ value, label: value }));
   }, [UI_DATA_SOURCE, apiTopics, filteredCalls]);
 
+  const selectedTopicLabel =
+    topic === "all"
+      ? "all"
+      : topicOptions.find((item) => item.value === topic)?.label ?? topic;
+
   const departmentOptions = useMemo(() => {
     if (UI_DATA_SOURCE === "API" && apiDepartments != null) {
       return mapDictionaryToOptions(apiDepartments);
@@ -1205,9 +1210,10 @@ for (let i = 1; i < callsPerQueuePerHour; i++) {
     () =>
       topic === "all"
         ? callsScopeForAnalytics
-        : callsScopeForAnalytics.filter((c) => c.topic === topic),
-    [callsScopeForAnalytics, topic]
+        : callsScopeForAnalytics.filter((c) => c.topic === selectedTopicLabel),
+    [callsScopeForAnalytics, topic, selectedTopicLabel]
   );
+
 
   const topicAhtGauge = useMemo(() => {
     let ahtSec = 0;
@@ -1637,6 +1643,17 @@ const goalSplit = useMemo(() => {
 }, [filteredCalls]);
 
   const themesView = UI_DATA_SOURCE === "API" && apiTopicsTop ? apiTopicsTop : themes;
+
+  const topicSharePct = useMemo(() => {
+    if (topic === "all") return 100;
+
+    const total = themesView.reduce((sum, item) => sum + item.count, 0);
+    if (total === 0) return 0;
+
+    const selected = themesView.find((item) => item.name === selectedTopicLabel);
+    return selected ? Math.round((selected.count / total) * 100) : 0;
+  }, [topic, themesView, selectedTopicLabel]);
+
   const topicSplit = useMemo(() => {
   const m = new Map<string, number>();
 
@@ -2774,6 +2791,7 @@ const goalSplit = useMemo(() => {
   </Card>
 
   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    
     <Card className="rounded-2xl">
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Доля темы</CardTitle>
@@ -2810,6 +2828,7 @@ const goalSplit = useMemo(() => {
       </CardContent>
     </Card>
 
+
     <Card className="rounded-2xl">
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Распределение по каналам</CardTitle>
@@ -2821,6 +2840,7 @@ const goalSplit = useMemo(() => {
       </CardContent>
     </Card>
   </div>
+</div>
 </TabsContent>
 
               </div>
