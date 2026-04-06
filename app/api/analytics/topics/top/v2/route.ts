@@ -151,7 +151,7 @@ export async function GET(request: Request) {
         tr.name as name_ru,
         count(*)::float as value
       from cc_replica."CallResult" cr
-      join cc_replica."TicketResult" tr on tr.id = cr."ticketResult_id"
+      join cc_replica."TicketResult" tr on tr.id = cr.ticketresult_id
       join cc_replica."Call" c on c.id = cr.call_id
       join cc_replica."FsCdr" f on f.id = c.fs_uuid
       left join cc_replica."User" u on u.id = c.user_id
